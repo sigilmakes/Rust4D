@@ -1584,7 +1584,6 @@ dependencies = [
  "rust4d_math",
  "rust4d_physics",
  "serde",
- "slotmap",
 ]
 
 [[package]]
