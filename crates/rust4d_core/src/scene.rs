@@ -226,8 +226,9 @@ impl ActiveScene {
     /// This instantiates all entities from the template into a new World,
     /// optionally enabling physics with the provided config.
     ///
-    /// The `player_radius` parameter sets the collision radius for the player body.
-    pub fn from_template(template: &Scene, physics_config: Option<PhysicsConfig>, player_radius: f32) -> Self {
+    /// Player body creation is NOT handled here -- use
+    /// `rust4d_game::scene_helpers::create_player_body()` at the application layer.
+    pub fn from_template(template: &Scene, physics_config: Option<PhysicsConfig>) -> Self {
         log::debug!("from_template: physics_config={:?}, template.gravity={:?}", physics_config, template.gravity);
 
         // Create world with physics
@@ -297,25 +298,15 @@ impl ActiveScene {
             }
         }
 
-        // Create player body from player_spawn
-        let player_body_key = if let (Some(spawn), Some(physics)) = (template.player_spawn, world.physics_mut()) {
-            let position = Vec4::new(spawn[0], spawn[1], spawn[2], spawn[3]);
-            let player_body = RigidBody4D::new_sphere(position, player_radius)
-                .with_body_type(BodyType::Kinematic)
-                .with_gravity(true) // Kinematic player body needs gravity for jumping/falling
-                .with_mass(1.0)
-                .with_material(PhysicsMaterial::WOOD);
-
-            Some(physics.add_body(player_body))
-        } else {
-            None
-        };
+        // Player body creation is handled at the application layer using
+        // scene_helpers::create_player_body(). This avoids duplicating the player
+        // body setup between rust4d_core and rust4d_game.
 
         Self {
             name: template.name.clone(),
             player_spawn: template.player_spawn,
             world,
-            player_body_key,
+            player_body_key: None,
         }
     }
 
@@ -591,7 +582,7 @@ Scene(
         ).with_name("cube"));
 
         // Instantiate from template
-        let active = ActiveScene::from_template(&template, None, 0.5);
+        let active = ActiveScene::from_template(&template, None);
 
         assert_eq!(active.name, "Template Scene");
         assert_eq!(active.player_spawn, Some([0.0, 1.0, 5.0, 0.0]));
@@ -615,7 +606,6 @@ Scene(
         let active = ActiveScene::from_template(
             &template,
             Some(PhysicsConfig::new(-30.0)),
-            0.5,
         );
 
         // Should use overridden config, not template gravity

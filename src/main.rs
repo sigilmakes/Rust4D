@@ -18,7 +18,7 @@ use input::{InputMapper, InputAction};
 use systems::{RenderError, RenderSystem, SimulationSystem, WindowSystem};
 
 use rust4d_core::{World, SceneManager, Transform4D, ShapeRef, Material, Tags};
-use rust4d_game::{CharacterController4D, CharacterConfig};
+use rust4d_game::{CharacterController4D, CharacterConfig, scene_helpers};
 use rust4d_render::{
     camera4d::Camera4D,
     RenderableGeometry, CheckerboardGeometry, position_gradient_color,
@@ -59,7 +59,6 @@ impl App {
         // Create scene manager and load scene from file
         // Pass physics config from TOML to the physics engine
         let mut scene_manager = SceneManager::new()
-            .with_player_radius(config.scene.player_radius)
             .with_physics(config.physics.to_physics_config());
 
         // Load scene from configured path
@@ -73,6 +72,22 @@ impl App {
             .unwrap_or_else(|e| panic!("Failed to instantiate scene: {}", e));
         scene_manager.push_scene(&scene_name)
             .unwrap_or_else(|e| panic!("Failed to push scene: {}", e));
+
+        // Create player body from scene spawn point using scene_helpers
+        // (single source of truth for player body setup)
+        if let Some(scene) = scene_manager.active_scene_mut() {
+            if let Some(spawn) = scene.player_spawn {
+                let spawn_pos = Vec4::new(spawn[0], spawn[1], spawn[2], spawn[3]);
+                if let Some(physics) = scene.world.physics_mut() {
+                    let key = scene_helpers::create_player_body(
+                        physics,
+                        spawn_pos,
+                        config.scene.player_radius,
+                    );
+                    scene.player_body_key = Some(key);
+                }
+            }
+        }
 
         // Get player start from scene's player_spawn
         let player_start = scene_manager.active_scene()

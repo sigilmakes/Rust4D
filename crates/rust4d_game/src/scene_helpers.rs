@@ -1,7 +1,8 @@
-//! Scene helpers for physics setup from entity tags
+//! Scene helpers for player body creation
 //!
-//! Extracts the tag-based physics setup logic from `ActiveScene::from_template()`
-//! into reusable functions that can be used independently.
+//! Provides the canonical player body setup used by the application layer
+//! after scene instantiation. `ActiveScene::from_template()` handles static
+//! colliders and dynamic bodies; this module handles the player body.
 
 use rust4d_core::Scene;
 use rust4d_math::Vec4;
@@ -17,8 +18,9 @@ pub fn find_player_spawn(scene: &Scene) -> Option<Vec4> {
 /// Create a player body in the physics world
 ///
 /// Creates a kinematic sphere body with gravity enabled (for jumping/falling),
-/// using the WOOD physics material. This matches the player body setup from
-/// `ActiveScene::from_template()`.
+/// using the WOOD physics material. This is the single source of truth for
+/// player body creation -- called from the application layer after scene
+/// instantiation.
 ///
 /// # Parameters
 /// - `physics`: The physics world to add the body to

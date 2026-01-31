@@ -34,7 +34,7 @@ fn test_scene_dynamic_entity_has_physics_body() {
     );
 
     // Instantiate the scene
-    let active = ActiveScene::from_template(&scene, None, 0.5);
+    let active = ActiveScene::from_template(&scene, None);
 
     // Get the entity
     let entity_handle = active.world.get_by_name("tesseract")
@@ -78,7 +78,7 @@ fn test_scene_static_floor_has_collider() {
         .with_tag("static")
     );
 
-    let active = ActiveScene::from_template(&scene, None, 0.5);
+    let active = ActiveScene::from_template(&scene, None);
 
     // Verify static collider was created
     let physics = active.world.physics().expect("World should have physics");
@@ -288,7 +288,7 @@ fn test_scene_dynamic_entity_falls_to_floor() {
     );
 
     // Instantiate scene
-    let mut active = ActiveScene::from_template(&scene, None, 0.5);
+    let mut active = ActiveScene::from_template(&scene, None);
 
     // Get initial tesseract position
     let entity_handle = active.world.get_by_name("tesseract").unwrap();
@@ -340,7 +340,7 @@ fn test_load_default_scene_file() {
         .expect("scenes/default.ron should exist for this test");
 
     // Instantiate scene
-    let mut active = ActiveScene::from_template(&scene, None, 0.5);
+    let mut active = ActiveScene::from_template(&scene, None);
 
     // Verify tesseract entity exists and has physics body
     let entity_handle = active.world.get_by_name("tesseract")
