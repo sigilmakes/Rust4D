@@ -407,8 +407,6 @@ pub struct PhysicsWorld {
     bodies: SlotMap<BodyKey, RigidBody4D>,
     static_colliders: Vec<StaticCollider>,
     pub config: PhysicsConfig,
-    player_body: Option<BodyKey>,
-    player_jump_velocity: f32,
 }
 ```
 
@@ -862,7 +860,7 @@ fn test_scene_dynamic_entity_falls_to_floor() {
     scene.add_entity(/* tesseract */);
 
     // Instantiate
-    let mut active = ActiveScene::from_template(&scene, None, 0.5);
+    let mut active = ActiveScene::from_template(&scene, None);
 
     // Simulate
     for _ in 0..120 {
@@ -881,7 +879,8 @@ fn test_scene_dynamic_entity_falls_to_floor() {
 |-------|---------------|----------------|
 | rust4d_math | Vector operations, rotor composition | Inline tests in vec4.rs, rotor4.rs |
 | rust4d_core | Entity CRUD, dirty tracking, scene loading | Inline + physics_integration.rs |
-| rust4d_physics | Collision detection, physics step, player | Inline in collision.rs, world.rs |
+| rust4d_physics | Collision detection, physics step, body dynamics | Inline in collision.rs, world.rs |
+| rust4d_game | CharacterController4D, scene_helpers, events, FSM | Inline + tests/game_integration.rs |
 | rust4d_render | GPU buffer sizes, lookup tables | Inline in lookup_tables.rs |
 | rust4d_input | Input state handling | Minimal (mostly integration) |
 
