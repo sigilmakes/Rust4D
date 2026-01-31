@@ -10,6 +10,7 @@ use std::io;
 
 use crate::entity::EntityTemplate;
 use crate::shapes::ShapeTemplate;
+use crate::components::PhysicsBody;
 use crate::World;
 use rust4d_math::Vec4;
 use rust4d_physics::{PhysicsConfig, RigidBody4D, StaticCollider, BodyType, PhysicsMaterial};
@@ -241,9 +242,11 @@ impl ActiveScene {
 
         // Instantiate all entities from the template, setting up physics based on tags
         for entity_template in &template.entities {
-            let mut entity = entity_template.to_entity();
             let is_static = entity_template.tags.contains(&"static".to_string());
             let is_dynamic = entity_template.tags.contains(&"dynamic".to_string());
+
+            // Determine physics body key before spawning
+            let mut body_key = None;
 
             if let Some(physics) = world.physics_mut() {
                 if is_static {
@@ -282,12 +285,14 @@ impl ActiveScene {
                     .with_mass(10.0)
                     .with_material(PhysicsMaterial::WOOD);
 
-                    let body_key = physics.add_body(body);
-                    entity = entity.with_physics_body(body_key);
+                    body_key = Some(physics.add_body(body));
                 }
             }
 
-            world.add_entity(entity);
+            let entity_handle = entity_template.spawn_in(&mut world);
+            if let Some(bk) = body_key {
+                let _ = world.ecs_mut_unchecked().insert_one(entity_handle, PhysicsBody(bk));
+            }
         }
 
         // Create player body from player_spawn
@@ -419,7 +424,7 @@ Scene(
             tags: ["static"],
             transform: Transform4D(
                 position: Vec4(x: 0.0, y: -2.0, z: 0.0, w: 0.0),
-                rotation: (1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                rotation: (s: 1.0, b_xy: 0.0, b_xz: 0.0, b_xw: 0.0, b_yz: 0.0, b_yw: 0.0, b_zw: 0.0, p: 0.0),
                 scale: 1.0,
             ),
             shape: ShapeTemplate(
@@ -437,7 +442,7 @@ Scene(
             tags: ["dynamic"],
             transform: Transform4D(
                 position: Vec4(x: 0.0, y: 0.0, z: 0.0, w: 0.0),
-                rotation: (1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                rotation: (s: 1.0, b_xy: 0.0, b_xz: 0.0, b_xw: 0.0, b_yz: 0.0, b_yw: 0.0, b_zw: 0.0, p: 0.0),
                 scale: 1.0,
             ),
             shape: ShapeTemplate(
@@ -483,20 +488,30 @@ Scene(
     }
 
     #[test]
-    fn test_entity_template_to_entity() {
+    fn test_entity_template_spawn_in() {
         let template = EntityTemplate::new(
             ShapeTemplate::tesseract(2.0),
             Transform4D::from_position(Vec4::new(1.0, 2.0, 3.0, 4.0)),
             Material::RED,
         ).with_name("my_cube").with_tag("dynamic");
 
-        let entity = template.to_entity();
+        let mut world = crate::World::new();
+        let entity = template.spawn_in(&mut world);
 
-        assert_eq!(entity.name, Some("my_cube".to_string()));
-        assert!(entity.has_tag("dynamic"));
-        assert_eq!(entity.transform.position.x, 1.0);
-        assert_eq!(entity.material.base_color, [1.0, 0.0, 0.0, 1.0]);
-        assert_eq!(entity.shape().vertex_count(), 16); // Tesseract has 16 vertices
+        let name = world.ecs().get::<&crate::Name>(entity).unwrap();
+        assert_eq!(name.0, "my_cube");
+
+        let tags = world.ecs().get::<&crate::Tags>(entity).unwrap();
+        assert!(tags.has("dynamic"));
+
+        let transform = world.ecs().get::<&Transform4D>(entity).unwrap();
+        assert_eq!(transform.position.x, 1.0);
+
+        let material = world.ecs().get::<&Material>(entity).unwrap();
+        assert_eq!(material.base_color, [1.0, 0.0, 0.0, 1.0]);
+
+        let shape = world.ecs().get::<&crate::ShapeRef>(entity).unwrap();
+        assert_eq!(shape.as_shape().vertex_count(), 16); // Tesseract has 16 vertices
     }
 
     // --- SceneError tests ---
@@ -581,8 +596,9 @@ Scene(
         assert_eq!(active.world.physics().unwrap().config.gravity, -15.0);
 
         // Check entity was instantiated
-        let (_, entity) = active.world.get_by_name("cube").unwrap();
-        assert_eq!(entity.material.base_color, [1.0, 0.0, 0.0, 1.0]);
+        let entity_handle = active.world.get_by_name("cube").unwrap();
+        let material = active.world.ecs().get::<&Material>(entity_handle).unwrap();
+        assert_eq!(material.base_color, [1.0, 0.0, 0.0, 1.0]);
     }
 
     #[test]

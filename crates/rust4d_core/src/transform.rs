@@ -3,39 +3,14 @@
 //! A Transform4D represents the position, rotation, and scale of an entity in 4D space.
 
 use rust4d_math::{Vec4, Rotor4};
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
-
-/// Custom serialization module for Rotor4
-///
-/// Since Rotor4 is defined in rust4d_math and doesn't have Serialize/Deserialize,
-/// we serialize it as an array of 8 floats: [s, b_xy, b_xz, b_xw, b_yz, b_yw, b_zw, p]
-mod rotor4_serde {
-    use super::*;
-
-    pub fn serialize<S: Serializer>(rotor: &Rotor4, serializer: S) -> Result<S::Ok, S::Error> {
-        let arr = [
-            rotor.s, rotor.b_xy, rotor.b_xz, rotor.b_xw,
-            rotor.b_yz, rotor.b_yw, rotor.b_zw, rotor.p
-        ];
-        arr.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Rotor4, D::Error> {
-        let arr: [f32; 8] = <[f32; 8]>::deserialize(deserializer)?;
-        Ok(Rotor4 {
-            s: arr[0], b_xy: arr[1], b_xz: arr[2], b_xw: arr[3],
-            b_yz: arr[4], b_yw: arr[5], b_zw: arr[6], p: arr[7],
-        })
-    }
-}
+use serde::{Serialize, Deserialize};
 
 /// A 4D transform with position, rotation, and uniform scale
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Transform4D {
     /// Position in 4D space
     pub position: Vec4,
-    /// Rotation as a 4D rotor (serialized as 8-element array)
-    #[serde(with = "rotor4_serde")]
+    /// Rotation as a 4D rotor
     pub rotation: Rotor4,
     /// Uniform scale factor
     pub scale: f32,

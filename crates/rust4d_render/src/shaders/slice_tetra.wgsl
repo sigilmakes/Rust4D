@@ -276,7 +276,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     // Output triangles
     let tri_indices = TETRA_TRI_TABLE[case_idx];
-    let camera_eye = params.camera_eye;
 
     for (var t: u32 = 0u; t < tri_count; t++) {
         let base = t * 3u;
@@ -294,12 +293,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let p2 = vertex_position(tv2);
         var normal = compute_normal(p0, p1, p2);
 
-        // Ensure normals face toward the camera
-        // The normal should point in the same direction as the vector from triangle to camera
+        // Ensure normals face toward the camera.
+        // In camera space the camera is at the origin, so the direction
+        // from the triangle to the camera is simply -tri_center.
+        // (The old bug used params.camera_eye which was in world space,
+        // not camera space, causing incorrect flips when the camera rotated.)
         let tri_center = (p0 + p1 + p2) / 3.0;
-        let to_camera = camera_eye - tri_center;
+        let to_camera = -tri_center;
         if (dot(normal, to_camera) < 0.0) {
-            // Normal points away from camera, flip to face camera
             let tmp = tv1;
             tv1 = tv2;
             tv2 = tmp;

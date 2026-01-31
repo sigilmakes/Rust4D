@@ -192,10 +192,8 @@ impl Default for PhysicsConfigToml {
 impl PhysicsConfigToml {
     /// Convert to the physics engine's PhysicsConfig
     pub fn to_physics_config(&self) -> PhysicsConfig {
-        PhysicsConfig {
-            gravity: self.gravity,
-            jump_velocity: self.jump_velocity,
-        }
+        PhysicsConfig::new(self.gravity)
+            .with_jump_velocity(self.jump_velocity)
     }
 }
 

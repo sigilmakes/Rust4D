@@ -17,7 +17,7 @@ use winit::{
 use input::{InputMapper, InputAction};
 use systems::{RenderError, RenderSystem, SimulationSystem, WindowSystem};
 
-use rust4d_core::{World, SceneManager};
+use rust4d_core::{World, SceneManager, Transform4D, ShapeRef, Material, Tags};
 use rust4d_render::{
     camera4d::Camera4D,
     RenderableGeometry, CheckerboardGeometry, position_gradient_color,
@@ -127,13 +127,18 @@ impl App {
             2.0, // Cell size
         );
 
-        for (_key, entity) in world.iter_with_keys() {
-            if entity.has_tag("dynamic") {
+        // Query all renderable entities (Transform4D + ShapeRef + Material)
+        // Optionally check Tags for coloring strategy
+        for (_entity, (transform, shape, material, tags)) in
+            world.ecs().query::<(&Transform4D, &ShapeRef, &Material, Option<&Tags>)>().iter()
+        {
+            let is_dynamic = tags.map(|t| t.has("dynamic")).unwrap_or(false);
+            if is_dynamic {
                 // Dynamic entities (tesseract): use position gradient
-                geometry.add_entity_with_color(entity, &position_gradient_color);
+                geometry.add_components_with_color(transform, shape.as_shape(), material, &position_gradient_color);
             } else {
                 // Static entities (floor): use checkerboard pattern
-                geometry.add_entity_with_color(entity, &|v, _m| {
+                geometry.add_components_with_color(transform, shape.as_shape(), material, &|v, _m| {
                     checkerboard.color_for_position(v.x, v.z)
                 });
             }

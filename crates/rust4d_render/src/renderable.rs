@@ -3,7 +3,7 @@
 //! This module converts the abstract shape data from rust4d_core into
 //! GPU-compatible vertex and tetrahedra buffers.
 
-use rust4d_core::{Entity, World, Material};
+use rust4d_core::{World, Material, Transform4D, ShapeRef};
 use rust4d_math::Vec4;
 use crate::pipeline::{Vertex4D, GpuTetrahedron};
 
@@ -35,20 +35,6 @@ impl RenderableGeometry {
         }
     }
 
-    /// Collect geometry from a single entity
-    ///
-    /// Uses the entity's material base_color for all vertices.
-    pub fn from_entity(entity: &Entity) -> Self {
-        Self::from_entity_with_color(entity, &default_color_fn)
-    }
-
-    /// Collect geometry from a single entity with a custom color function
-    pub fn from_entity_with_color(entity: &Entity, color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4]) -> Self {
-        let mut result = Self::new();
-        result.add_entity_with_color(entity, color_fn);
-        result
-    }
-
     /// Collect geometry from all entities in a world
     ///
     /// Uses each entity's material base_color for all its vertices.
@@ -57,38 +43,34 @@ impl RenderableGeometry {
     }
 
     /// Collect geometry from all entities in a world with a custom color function
+    ///
+    /// Iterates all entities with Transform4D, ShapeRef, and Material components
+    /// using ECS queries.
     pub fn from_world_with_color(world: &World, color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4]) -> Self {
-        // Estimate capacity
-        let mut total_vertices = 0;
-        let mut total_tetrahedra = 0;
-        for entity in world.iter() {
-            total_vertices += entity.shape().vertex_count();
-            total_tetrahedra += entity.shape().tetrahedron_count();
-        }
-
-        let mut result = Self::with_capacity(total_vertices, total_tetrahedra);
-        for entity in world.iter() {
-            result.add_entity_with_color(entity, color_fn);
+        let mut result = Self::new();
+        for (_entity, (transform, shape, material)) in world.ecs().query::<(&Transform4D, &ShapeRef, &Material)>().iter() {
+            result.add_components_with_color(transform, shape.as_shape(), material, color_fn);
         }
         result
     }
 
-    /// Add an entity's geometry to this collection
+    /// Add geometry from individual ECS components with a custom color function
     ///
-    /// Uses the entity's material base_color for all vertices.
-    pub fn add_entity(&mut self, entity: &Entity) {
-        self.add_entity_with_color(entity, &default_color_fn);
-    }
-
-    /// Add an entity's geometry with a custom color function
-    pub fn add_entity_with_color(&mut self, entity: &Entity, color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4]) {
-        let shape = entity.shape();
+    /// This is the core method that works with decomposed components rather than
+    /// a monolithic Entity struct.
+    pub fn add_components_with_color(
+        &mut self,
+        transform: &Transform4D,
+        shape: &dyn rust4d_math::ConvexShape4D,
+        material: &Material,
+        color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4],
+    ) {
         let vertex_offset = self.vertices.len();
 
         // Transform and add vertices
         for v in shape.vertices() {
-            let world_pos = entity.transform.transform_point(*v);
-            let color = color_fn(v, &entity.material);
+            let world_pos = transform.transform_point(*v);
+            let color = color_fn(v, material);
             self.vertices.push(Vertex4D::new(
                 [world_pos.x, world_pos.y, world_pos.z, world_pos.w],
                 color,
@@ -186,14 +168,16 @@ impl CheckerboardGeometry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust4d_core::{ShapeRef, Tesseract4D, Transform4D};
+    use rust4d_core::{ShapeRef, Tesseract4D, Transform4D, DirtyFlags};
 
-    fn make_test_entity() -> Entity {
+    fn spawn_test_entity(world: &mut World) -> rust4d_core::hecs::Entity {
         let tesseract = Tesseract4D::new(2.0);
-        Entity::with_material(
+        world.spawn((
             ShapeRef::shared(tesseract),
+            Transform4D::identity(),
             Material::from_rgb(1.0, 0.5, 0.25),
-        )
+            DirtyFlags::ALL,
+        ))
     }
 
     #[test]
@@ -204,9 +188,14 @@ mod tests {
     }
 
     #[test]
-    fn test_renderable_geometry_from_entity() {
-        let entity = make_test_entity();
-        let geom = RenderableGeometry::from_entity(&entity);
+    fn test_renderable_geometry_from_components() {
+        let tesseract = Tesseract4D::new(2.0);
+        let shape_ref = ShapeRef::shared(tesseract);
+        let material = Material::from_rgb(1.0, 0.5, 0.25);
+        let transform = Transform4D::identity();
+
+        let mut geom = RenderableGeometry::new();
+        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
 
         assert_eq!(geom.vertex_count(), 16); // Tesseract has 16 vertices
         assert!(geom.tetrahedron_count() > 0);
@@ -220,8 +209,8 @@ mod tests {
     #[test]
     fn test_renderable_geometry_from_world() {
         let mut world = World::new();
-        world.add_entity(make_test_entity());
-        world.add_entity(make_test_entity());
+        spawn_test_entity(&mut world);
+        spawn_test_entity(&mut world);
 
         let geom = RenderableGeometry::from_world(&world);
 
@@ -229,21 +218,29 @@ mod tests {
     }
 
     #[test]
-    fn test_renderable_geometry_add_entity() {
+    fn test_renderable_geometry_add_components() {
         let mut geom = RenderableGeometry::new();
-        let entity = make_test_entity();
+        let tesseract = Tesseract4D::new(2.0);
+        let shape_ref = ShapeRef::shared(tesseract);
+        let material = Material::from_rgb(1.0, 0.5, 0.25);
+        let transform = Transform4D::identity();
 
-        geom.add_entity(&entity);
+        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
         assert_eq!(geom.vertex_count(), 16);
 
-        geom.add_entity(&entity);
+        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
         assert_eq!(geom.vertex_count(), 32);
     }
 
     #[test]
     fn test_renderable_geometry_clear() {
-        let entity = make_test_entity();
-        let mut geom = RenderableGeometry::from_entity(&entity);
+        let tesseract = Tesseract4D::new(2.0);
+        let shape_ref = ShapeRef::shared(tesseract);
+        let material = Material::from_rgb(1.0, 0.5, 0.25);
+        let transform = Transform4D::identity();
+
+        let mut geom = RenderableGeometry::new();
+        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
 
         assert!(geom.vertex_count() > 0);
         geom.clear();
@@ -284,12 +281,12 @@ mod tests {
     #[test]
     fn test_transform_applied() {
         let tesseract = Tesseract4D::new(2.0);
-        let mut entity = Entity::new(ShapeRef::shared(tesseract));
+        let shape_ref = ShapeRef::shared(tesseract);
+        let material = Material::default();
+        let transform = Transform4D::from_position(Vec4::new(10.0, 0.0, 0.0, 0.0));
 
-        // Translate by (10, 0, 0, 0)
-        entity.transform = Transform4D::from_position(Vec4::new(10.0, 0.0, 0.0, 0.0));
-
-        let geom = RenderableGeometry::from_entity(&entity);
+        let mut geom = RenderableGeometry::new();
+        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
 
         // All vertices should be offset by 10 in x
         for v in &geom.vertices {
@@ -301,13 +298,15 @@ mod tests {
     #[test]
     fn test_tetrahedra_indices_offset() {
         let mut geom = RenderableGeometry::new();
-        let entity1 = make_test_entity();
-        let entity2 = make_test_entity();
+        let tesseract = Tesseract4D::new(2.0);
+        let shape_ref = ShapeRef::shared(tesseract);
+        let material = Material::from_rgb(1.0, 0.5, 0.25);
+        let transform = Transform4D::identity();
 
-        geom.add_entity(&entity1);
+        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
         let first_entity_verts = geom.vertex_count();
 
-        geom.add_entity(&entity2);
+        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
 
         // Second entity's tetrahedra should have indices >= first_entity_verts
         let second_tet = geom.tetrahedra.last().unwrap();

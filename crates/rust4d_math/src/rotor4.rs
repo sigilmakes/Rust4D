@@ -9,10 +9,11 @@
 //! - 1 pseudoscalar (4-vector)
 
 use bytemuck::{Pod, Zeroable};
+use serde::{Serialize, Deserialize};
 use crate::Vec4;
 
 /// The 6 rotation planes in 4D space
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RotationPlane {
     /// XY plane - standard yaw (rotation around Z axis in 3D)
     XY,
@@ -33,7 +34,7 @@ pub enum RotationPlane {
 /// Rotor = scalar + bivectors + pseudoscalar
 /// R = s + b_xy*e12 + b_xz*e13 + b_xw*e14 + b_yz*e23 + b_yw*e24 + b_zw*e34 + p*e1234
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable, Serialize, Deserialize)]
 pub struct Rotor4 {
     /// Scalar component
     pub s: f32,

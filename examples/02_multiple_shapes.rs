@@ -19,7 +19,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use rust4d_core::{Entity, Material, ShapeRef, Tesseract4D, Transform4D, World};
+use rust4d_core::{Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World};
 use rust4d_render::{
     camera4d::Camera4D,
     context::RenderContext,
@@ -78,8 +78,12 @@ impl App {
         for (position, material) in positions_and_colors {
             let tesseract = Tesseract4D::new(1.5);
             let transform = Transform4D::from_position(position);
-            let entity = Entity::with_transform(ShapeRef::shared(tesseract), transform, material);
-            world.add_entity(entity);
+            world.spawn((
+                ShapeRef::shared(tesseract),
+                transform,
+                material,
+                DirtyFlags::ALL,
+            ));
         }
 
         let geometry = RenderableGeometry::from_world(&world);

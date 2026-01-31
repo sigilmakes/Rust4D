@@ -57,8 +57,9 @@ impl SimulationSystem {
         // 1. Calculate delta time
         let now = Instant::now();
         let raw_dt = (now - self.last_frame).as_secs_f32();
-        // Cap dt to prevent huge physics steps on first frame or after window focus
-        let dt = raw_dt.min(1.0 / 30.0); // Max 33ms per frame
+        // Cap dt to prevent spiral of death on first frame or after window focus
+        // The physics accumulator further subdivides into fixed timesteps
+        let dt = raw_dt.min(0.25);
         self.last_frame = now;
 
         // 2. Get movement input from controller
@@ -77,8 +78,14 @@ impl SimulationSystem {
             Vec4::new(camera_right.x, 0.0, camera_right.z, camera_right.w).normalized();
         let ana_xzw = Vec4::new(camera_ana.x, 0.0, camera_ana.z, camera_ana.w).normalized();
 
-        // Combine movement direction
+        // Combine movement direction and normalize to prevent faster diagonal movement
+        // Without this, 2-axis movement is ~41% faster and 3-axis is ~73% faster
         let move_dir = forward_xzw * forward_input + right_xzw * right_input + ana_xzw * w_input;
+        let move_dir = if move_dir.length_squared() > 1.0 {
+            move_dir.normalized()
+        } else {
+            move_dir
+        };
 
         // 4. Apply movement to player via physics
         let move_speed = controller.move_speed;

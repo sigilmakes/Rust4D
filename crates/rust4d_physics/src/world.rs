@@ -15,6 +15,9 @@ pub struct PhysicsConfig {
     pub gravity: f32,
     /// Jump velocity for player
     pub jump_velocity: f32,
+    /// Fixed timestep for physics simulation (default: 1/60s)
+    #[serde(default = "PhysicsConfig::default_fixed_dt")]
+    pub fixed_dt: f32,
 }
 
 impl Default for PhysicsConfig {
@@ -22,7 +25,14 @@ impl Default for PhysicsConfig {
         Self {
             gravity: -20.0,
             jump_velocity: 8.0,
+            fixed_dt: Self::default_fixed_dt(),
         }
+    }
+}
+
+impl PhysicsConfig {
+    fn default_fixed_dt() -> f32 {
+        1.0 / 60.0
     }
 }
 
@@ -32,12 +42,19 @@ impl PhysicsConfig {
         Self {
             gravity,
             jump_velocity: 8.0,
+            fixed_dt: Self::default_fixed_dt(),
         }
     }
 
     /// Create a physics config with both gravity and jump velocity
     pub fn with_jump_velocity(mut self, jump_velocity: f32) -> Self {
         self.jump_velocity = jump_velocity;
+        self
+    }
+
+    /// Set the fixed timestep
+    pub fn with_fixed_dt(mut self, fixed_dt: f32) -> Self {
+        self.fixed_dt = fixed_dt;
         self
     }
 }
@@ -54,6 +71,10 @@ pub struct PhysicsWorld {
     player_body: Option<BodyKey>,
     /// Jump velocity for the player
     player_jump_velocity: f32,
+    /// Fixed timestep duration
+    fixed_dt: f32,
+    /// Accumulator for fixed timestep
+    accumulator: f32,
 }
 
 impl PhysicsWorld {
@@ -65,12 +86,15 @@ impl PhysicsWorld {
     /// Create a new physics world with custom configuration
     pub fn with_config(config: PhysicsConfig) -> Self {
         let jump_velocity = config.jump_velocity;
+        let fixed_dt = config.fixed_dt;
         Self {
             bodies: SlotMap::with_key(),
             static_colliders: Vec::new(),
             config,
             player_body: None,
             player_jump_velocity: jump_velocity,
+            fixed_dt,
+            accumulator: 0.0,
         }
     }
 
@@ -181,6 +205,28 @@ impl PhysicsWorld {
             }
         }
         false
+    }
+
+    /// Update the physics simulation using fixed timestep accumulator
+    ///
+    /// Accumulates the frame's `dt` and runs zero or more fixed-size `step()`
+    /// calls. This ensures deterministic physics regardless of frame rate.
+    pub fn update(&mut self, dt: f32) {
+        // Clamp incoming dt to prevent spiral of death
+        let dt = dt.min(0.25);
+        self.accumulator += dt;
+        while self.accumulator >= self.fixed_dt {
+            self.step(self.fixed_dt);
+            self.accumulator -= self.fixed_dt;
+        }
+    }
+
+    /// Get the interpolation alpha for render smoothing
+    ///
+    /// Returns a value in [0, 1) representing how far into the next
+    /// fixed step we are. Can be used for visual interpolation.
+    pub fn interpolation_alpha(&self) -> f32 {
+        self.accumulator / self.fixed_dt
     }
 
     /// Step the physics simulation forward by dt seconds
@@ -1471,5 +1517,128 @@ mod tests {
             "Player should rest at y=0.5 (radius above floor). Final y={}",
             final_y
         );
+    }
+
+    // ====== Fixed Timestep Tests ======
+
+    #[test]
+    fn test_fixed_timestep_produces_consistent_results() {
+        // Two worlds: one updated with 1x16ms, one with 2x8ms
+        // Both should produce nearly identical results
+        let config = PhysicsConfig::new(-20.0).with_fixed_dt(1.0 / 60.0);
+
+        let mut world_a = PhysicsWorld::with_config(config.clone());
+        let body_a = RigidBody4D::new_sphere(Vec4::new(0.0, 10.0, 0.0, 0.0), 0.5);
+        let key_a = world_a.add_body(body_a);
+
+        let mut world_b = PhysicsWorld::with_config(config);
+        let body_b = RigidBody4D::new_sphere(Vec4::new(0.0, 10.0, 0.0, 0.0), 0.5);
+        let key_b = world_b.add_body(body_b);
+
+        // Simulate same total time with different frame rates
+        // World A: 60 frames at ~16.67ms
+        for _ in 0..60 {
+            world_a.update(1.0 / 60.0);
+        }
+        // World B: 120 frames at ~8.33ms
+        for _ in 0..120 {
+            world_b.update(1.0 / 120.0);
+        }
+
+        let pos_a = world_a.get_body(key_a).unwrap().position;
+        let pos_b = world_b.get_body(key_b).unwrap().position;
+
+        // Both ran same number of fixed steps (60), so positions should match closely
+        let diff = (pos_a.y - pos_b.y).abs();
+        assert!(
+            diff < 0.01,
+            "Fixed timestep should produce consistent results. A: {}, B: {}, diff: {}",
+            pos_a.y, pos_b.y, diff
+        );
+    }
+
+    #[test]
+    fn test_fixed_timestep_accumulator_handles_large_dt() {
+        let config = PhysicsConfig::new(-20.0).with_fixed_dt(1.0 / 60.0);
+        let mut world = PhysicsWorld::with_config(config);
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 10.0, 0.0, 0.0), 0.5);
+        let key = world.add_body(body);
+
+        // A single large update should produce multiple sub-steps
+        // 100ms = ~6 steps at 1/60s each
+        world.update(0.1);
+
+        let body = world.get_body(key).unwrap();
+        // Body should have fallen (gravity applied over multiple sub-steps)
+        assert!(body.position.y < 10.0, "Body should have fallen");
+        assert!(body.velocity.y < 0.0, "Body should have downward velocity");
+    }
+
+    #[test]
+    fn test_fixed_timestep_no_step_when_dt_small() {
+        let config = PhysicsConfig::new(-20.0).with_fixed_dt(1.0 / 60.0);
+        let mut world = PhysicsWorld::with_config(config);
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 10.0, 0.0, 0.0), 0.5);
+        let key = world.add_body(body);
+
+        // A very small update should not trigger any step
+        world.update(0.001);
+
+        let body = world.get_body(key).unwrap();
+        // No step occurred, so position unchanged
+        assert_eq!(body.position.y, 10.0, "No step should occur for tiny dt");
+
+        // But accumulator should hold the remainder
+        assert!(world.accumulator > 0.0);
+        assert!(world.accumulator < world.fixed_dt);
+    }
+
+    #[test]
+    fn test_fixed_timestep_accumulator_carries_remainder() {
+        let config = PhysicsConfig::new(0.0).with_fixed_dt(1.0 / 60.0); // No gravity
+        let mut world = PhysicsWorld::with_config(config);
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 0.5)
+            .with_velocity(Vec4::new(60.0, 0.0, 0.0, 0.0)); // 60 units/sec
+        let key = world.add_body(body);
+
+        // Update with 25ms - should do 1 step (16.67ms) with ~8.33ms remainder
+        world.update(0.025);
+
+        let body = world.get_body(key).unwrap();
+        // 1 step at 1/60s with velocity 60 = 1.0 unit moved
+        assert!((body.position.x - 1.0).abs() < 0.01,
+            "Should have moved 1 unit after 1 fixed step, got {}", body.position.x);
+
+        // Remainder should be ~8.33ms
+        assert!(world.accumulator > 0.008 && world.accumulator < 0.009,
+            "Accumulator should carry remainder: {}", world.accumulator);
+    }
+
+    #[test]
+    fn test_interpolation_alpha() {
+        let config = PhysicsConfig::new(0.0).with_fixed_dt(1.0 / 60.0);
+        let mut world = PhysicsWorld::with_config(config);
+
+        // No update yet, alpha should be 0
+        assert_eq!(world.interpolation_alpha(), 0.0);
+
+        // Update with half a fixed step
+        world.update(0.5 / 60.0);
+        let alpha = world.interpolation_alpha();
+        assert!((alpha - 0.5).abs() < 0.01,
+            "Alpha should be ~0.5, got {}", alpha);
+    }
+
+    #[test]
+    fn test_existing_step_still_works_directly() {
+        // step() should still work as before for tests that call it directly
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(-20.0));
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 10.0, 0.0, 0.0), 0.5);
+        let key = world.add_body(body);
+
+        world.step(0.1);
+
+        let body = world.get_body(key).unwrap();
+        assert!((body.velocity.y - (-2.0)).abs() < 0.0001);
     }
 }

@@ -21,8 +21,8 @@ use winit::{
 };
 
 use rust4d_core::{
-    Entity, Material, ShapeRef, Tesseract4D, Transform4D, World,
-    PhysicsConfig, RigidBody4D, StaticCollider, Hyperplane4D,
+    Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World, Tags, Name,
+    PhysicsConfig, PhysicsBody, RigidBody4D, StaticCollider, Hyperplane4D,
 };
 use rust4d_render::{
     camera4d::Camera4D,
@@ -32,6 +32,7 @@ use rust4d_render::{
 };
 use rust4d_math::Vec4;
 use rust4d_physics::{BodyType, PhysicsMaterial};
+use rust4d_core::hecs;
 
 /// Application state
 struct App {
@@ -60,11 +61,14 @@ impl App {
         // Add visual floor entity (shape at y=0 local, positioned by transform)
         let floor_shape = Hyperplane4D::new(15.0, 10, 2.0, 0.001);
         let floor_transform = Transform4D::from_position(Vec4::new(0.0, floor_y, 0.0, 0.0));
-        world.add_entity(
-            Entity::with_transform(ShapeRef::shared(floor_shape), floor_transform, Material::GRAY)
-                .with_name("floor")
-                .with_tag("static"),
-        );
+        world.spawn((
+            ShapeRef::shared(floor_shape),
+            floor_transform,
+            Material::GRAY,
+            DirtyFlags::ALL,
+            Name::new("floor"),
+            Tags::new().with_tag("static"),
+        ));
 
         // Add falling tesseracts at different heights
         let spawn_positions = [
@@ -93,18 +97,20 @@ impl App {
                 None
             };
 
-            // Add visual entity
+            // Add visual entity with ECS components
             let tesseract = Tesseract4D::new(size);
             let transform = Transform4D::from_position(*position);
-            let mut entity = Entity::with_transform(ShapeRef::shared(tesseract), transform, *material)
-                .with_name(format!("tesseract_{}", i))
-                .with_tag("dynamic");
-
+            let mut builder = hecs::EntityBuilder::new();
+            builder.add(ShapeRef::shared(tesseract));
+            builder.add(transform);
+            builder.add(*material);
+            builder.add(DirtyFlags::ALL);
+            builder.add(Name::new(format!("tesseract_{}", i)));
+            builder.add(Tags::new().with_tag("dynamic"));
             if let Some(key) = body_key {
-                entity = entity.with_physics_body(key);
+                builder.add(PhysicsBody(key));
             }
-
-            world.add_entity(entity);
+            world.spawn(builder.build());
         }
 
         let geometry = Self::build_geometry(&world);
@@ -134,11 +140,14 @@ impl App {
             2.0,
         );
 
-        for entity in world.iter() {
-            if entity.has_tag("dynamic") {
-                geometry.add_entity_with_color(entity, &position_gradient_color);
+        for (_entity, (transform, shape, material, tags)) in
+            world.ecs().query::<(&Transform4D, &ShapeRef, &Material, Option<&Tags>)>().iter()
+        {
+            let is_dynamic = tags.map(|t| t.has("dynamic")).unwrap_or(false);
+            if is_dynamic {
+                geometry.add_components_with_color(transform, shape.as_shape(), material, &position_gradient_color);
             } else {
-                geometry.add_entity_with_color(entity, &|v, _m| {
+                geometry.add_components_with_color(transform, shape.as_shape(), material, &|v, _m| {
                     checkerboard.color_for_position(v.x, v.z)
                 });
             }

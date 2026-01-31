@@ -8,7 +8,7 @@
 
 use rust4d_core::{
     ActiveScene, Scene, World, EntityTemplate, Transform4D, Material, ShapeRef,
-    ShapeTemplate,
+    ShapeTemplate, DirtyFlags, PhysicsBody, Name,
 };
 use rust4d_physics::{
     PhysicsConfig, PhysicsWorld, RigidBody4D, BodyType, StaticCollider, PhysicsMaterial,
@@ -37,18 +37,19 @@ fn test_scene_dynamic_entity_has_physics_body() {
     let active = ActiveScene::from_template(&scene, None, 0.5);
 
     // Get the entity
-    let (_, entity) = active.world.get_by_name("tesseract")
+    let entity_handle = active.world.get_by_name("tesseract")
         .expect("Tesseract entity should exist");
 
     // Verify physics body was created
+    let body_comp = active.world.ecs().get::<&PhysicsBody>(entity_handle);
     assert!(
-        entity.physics_body.is_some(),
+        body_comp.is_ok(),
         "Dynamic entity should have a physics body"
     );
 
     // Verify the body exists in the physics world
     let physics = active.world.physics().expect("World should have physics");
-    let body_key = entity.physics_body.unwrap();
+    let body_key = body_comp.unwrap().0;
     let body = physics.get_body(body_key).expect("Physics body should exist");
 
     // Verify body type is Dynamic
@@ -225,10 +226,14 @@ fn test_entity_transform_syncs_from_physics() {
 
     // Create an entity linked to the physics body
     let tesseract = Tesseract4D::new(2.0);
-    let entity = rust4d_core::Entity::new(ShapeRef::shared(tesseract))
-        .with_name("test")
-        .with_physics_body(body_key);
-    world.add_entity(entity);
+    let entity_handle = world.spawn((
+        ShapeRef::shared(tesseract),
+        Transform4D::identity(),
+        Material::default(),
+        DirtyFlags::ALL,
+        Name::new("test"),
+        PhysicsBody(body_key),
+    ));
 
     // Clear dirty flags
     world.clear_all_dirty();
@@ -237,15 +242,16 @@ fn test_entity_transform_syncs_from_physics() {
     world.update(0.1);
 
     // Entity should have new position
-    let (_, entity) = world.get_by_name("test").unwrap();
+    let transform = world.ecs().get::<&Transform4D>(entity_handle).unwrap();
     assert!(
-        entity.transform.position.y < 10.0,
-        "Entity should have moved. Y={}", entity.transform.position.y
+        transform.position.y < 10.0,
+        "Entity should have moved. Y={}", transform.position.y
     );
 
     // Entity should be marked dirty
+    let dirty = world.ecs().get::<&DirtyFlags>(entity_handle).unwrap();
     assert!(
-        entity.is_dirty(),
+        !dirty.is_empty(),
         "Entity should be marked dirty after position sync"
     );
 }
@@ -285,8 +291,8 @@ fn test_scene_dynamic_entity_falls_to_floor() {
     let mut active = ActiveScene::from_template(&scene, None, 0.5);
 
     // Get initial tesseract position
-    let initial_y = active.world.get_by_name("tesseract")
-        .unwrap().1.transform.position.y;
+    let entity_handle = active.world.get_by_name("tesseract").unwrap();
+    let initial_y = active.world.ecs().get::<&Transform4D>(entity_handle).unwrap().position.y;
 
     // Simulate 2 seconds (120 frames at 60fps)
     for _ in 0..120 {
@@ -294,8 +300,8 @@ fn test_scene_dynamic_entity_falls_to_floor() {
     }
 
     // Get final position
-    let (_, entity) = active.world.get_by_name("tesseract").unwrap();
-    let final_y = entity.transform.position.y;
+    let entity_handle = active.world.get_by_name("tesseract").unwrap();
+    let final_y = active.world.ecs().get::<&Transform4D>(entity_handle).unwrap().position.y;
 
     // Tesseract should have fallen
     assert!(
@@ -304,7 +310,6 @@ fn test_scene_dynamic_entity_falls_to_floor() {
     );
 
     // Tesseract should be near the floor (center at ~-1, bottom at -2)
-    // With size=2.0 (half_extent=1.0), center at y=-1 means bottom is at y=-2 (floor surface)
     assert!(
         final_y > -2.0,
         "Tesseract should be above floor surface. Y={}", final_y
@@ -316,7 +321,8 @@ fn test_scene_dynamic_entity_falls_to_floor() {
 
     // Verify physics body is grounded
     let physics = active.world.physics().unwrap();
-    let body = physics.get_body(entity.physics_body.unwrap()).unwrap();
+    let body_comp = active.world.ecs().get::<&PhysicsBody>(entity_handle).unwrap();
+    let body = physics.get_body(body_comp.0).unwrap();
     assert!(
         body.grounded,
         "Tesseract physics body should be grounded"
@@ -337,15 +343,15 @@ fn test_load_default_scene_file() {
     let mut active = ActiveScene::from_template(&scene, None, 0.5);
 
     // Verify tesseract entity exists and has physics body
-    let (_, entity) = active.world.get_by_name("tesseract")
+    let entity_handle = active.world.get_by_name("tesseract")
         .expect("Tesseract entity should exist in default scene");
 
     assert!(
-        entity.physics_body.is_some(),
+        active.world.ecs().get::<&PhysicsBody>(entity_handle).is_ok(),
         "Tesseract should have physics body"
     );
 
-    let initial_y = entity.transform.position.y;
+    let initial_y = active.world.ecs().get::<&Transform4D>(entity_handle).unwrap().position.y;
 
     // Simulate 2 seconds
     for _ in 0..120 {
@@ -353,8 +359,8 @@ fn test_load_default_scene_file() {
     }
 
     // Get final position
-    let (_, entity) = active.world.get_by_name("tesseract").unwrap();
-    let final_y = entity.transform.position.y;
+    let entity_handle = active.world.get_by_name("tesseract").unwrap();
+    let final_y = active.world.ecs().get::<&Transform4D>(entity_handle).unwrap().position.y;
 
     // Tesseract should have fallen
     assert!(
@@ -391,24 +397,20 @@ fn test_player_falls_off_w_edge() {
     let start_y = physics.player_position().unwrap().y;
 
     // Move player to W=6 (outside floor's W bounds of -5 to +5)
-    // Keep applying movement each frame (like the game loop does)
     for _ in 0..60 {
-        physics.apply_player_movement(Vec4::new(0.0, 0.0, 0.0, 10.0)); // W velocity
+        physics.apply_player_movement(Vec4::new(0.0, 0.0, 0.0, 10.0));
         physics.step(1.0 / 60.0);
     }
 
-    // Player should now be at W > 5 (off the floor in W dimension)
-    // 10 units/s * 1 second = 10 units moved in W
     let pos = physics.player_position().unwrap();
     assert!(pos.w > 5.0, "Player should have moved off W edge. W={}", pos.w);
 
-    // Player should NOT be grounded anymore (off the floor)
     assert!(!physics.player_is_grounded(),
         "Player should NOT be grounded when off W edge. W={}", pos.w);
 
     // Continue stepping - player should fall
     for _ in 0..60 {
-        physics.apply_player_movement(Vec4::ZERO); // Stop horizontal movement
+        physics.apply_player_movement(Vec4::ZERO);
         physics.step(1.0 / 60.0);
     }
 
@@ -472,10 +474,14 @@ fn test_remove_entity_cleans_up_physics_body() {
 
     // Create an entity linked to the physics body
     let tesseract = Tesseract4D::new(2.0);
-    let entity = rust4d_core::Entity::new(ShapeRef::shared(tesseract))
-        .with_name("physics_test")
-        .with_physics_body(body_key);
-    let entity_key = world.add_entity(entity);
+    let entity_key = world.spawn((
+        ShapeRef::shared(tesseract),
+        Transform4D::identity(),
+        Material::default(),
+        DirtyFlags::ALL,
+        Name::new("physics_test"),
+        PhysicsBody(body_key),
+    ));
 
     // Verify body exists in physics world
     assert!(
@@ -488,8 +494,8 @@ fn test_remove_entity_cleans_up_physics_body() {
     );
 
     // Remove the entity
-    let removed = world.remove_entity(entity_key);
-    assert!(removed.is_some(), "Entity should be removed");
+    let removed = world.despawn(entity_key);
+    assert!(removed, "Entity should be removed");
 
     // Verify physics body was also removed
     assert!(
@@ -509,14 +515,19 @@ fn test_remove_entity_without_physics_body() {
 
     // Create an entity WITHOUT a physics body
     let tesseract = Tesseract4D::new(2.0);
-    let entity = rust4d_core::Entity::new(ShapeRef::shared(tesseract))
-        .with_name("no_physics");
-    let entity_key = world.add_entity(entity);
+    let entity_key = world.spawn((
+        ShapeRef::shared(tesseract),
+        Transform4D::identity(),
+        Material::default(),
+        DirtyFlags::ALL,
+        Name::new("no_physics"),
+    ));
 
     // Remove the entity - should not panic
-    let removed = world.remove_entity(entity_key);
-    assert!(removed.is_some(), "Entity should be removed");
-    assert!(removed.unwrap().physics_body.is_none(), "Removed entity should have no physics body");
+    let removed = world.despawn(entity_key);
+    assert!(removed, "Entity should be removed");
+    // Verify entity is gone
+    assert!(!world.contains(entity_key));
 }
 
 /// Test that removing an entity in a world without physics works
@@ -526,11 +537,15 @@ fn test_remove_entity_world_without_physics() {
 
     // Create an entity
     let tesseract = Tesseract4D::new(2.0);
-    let entity = rust4d_core::Entity::new(ShapeRef::shared(tesseract))
-        .with_name("test");
-    let entity_key = world.add_entity(entity);
+    let entity_key = world.spawn((
+        ShapeRef::shared(tesseract),
+        Transform4D::identity(),
+        Material::default(),
+        DirtyFlags::ALL,
+        Name::new("test"),
+    ));
 
     // Remove should work fine
-    let removed = world.remove_entity(entity_key);
-    assert!(removed.is_some(), "Entity should be removed even without physics world");
+    let removed = world.despawn(entity_key);
+    assert!(removed, "Entity should be removed even without physics world");
 }
