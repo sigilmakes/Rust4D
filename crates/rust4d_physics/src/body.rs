@@ -47,13 +47,15 @@ pub struct RigidBody4D {
     pub grounded: bool,
     /// Collision filter (layer membership and collision mask)
     pub filter: CollisionFilter,
+    /// Whether gravity applies to this body (independent of body type)
+    pub gravity_enabled: bool,
 }
 
 impl RigidBody4D {
     /// Check if this body is affected by gravity
     #[inline]
     pub fn affected_by_gravity(&self) -> bool {
-        self.body_type == BodyType::Dynamic
+        self.gravity_enabled
     }
 
     /// Check if this body is static (never moves)
@@ -83,6 +85,7 @@ impl RigidBody4D {
             body_type: BodyType::Dynamic,
             grounded: false,
             filter: CollisionFilter::default(),
+            gravity_enabled: true, // Dynamic bodies have gravity by default
         }
     }
 
@@ -98,6 +101,7 @@ impl RigidBody4D {
             body_type: BodyType::Dynamic,
             grounded: false,
             filter: CollisionFilter::default(),
+            gravity_enabled: true, // Dynamic bodies have gravity by default
         }
     }
 
@@ -134,23 +138,34 @@ impl RigidBody4D {
     }
 
     /// Set the body type (Dynamic, Static, or Kinematic)
+    ///
+    /// Also sets `gravity_enabled` based on body type:
+    /// - Dynamic: gravity enabled
+    /// - Static/Kinematic: gravity disabled
+    ///
+    /// To override gravity independently of body type, call
+    /// `with_gravity_enabled()` after this method.
     pub fn with_body_type(mut self, body_type: BodyType) -> Self {
         self.body_type = body_type;
+        self.gravity_enabled = body_type == BodyType::Dynamic;
         self
     }
 
-    /// Set whether this body is affected by gravity (legacy API)
+    /// Set whether this body is affected by gravity
     ///
-    /// Sets body_type to Dynamic if gravity is enabled, otherwise keeps current type.
-    /// For new code, prefer `with_body_type()`.
+    /// This directly controls `gravity_enabled` without changing the body type.
+    /// Use this to enable gravity on kinematic bodies (e.g., player characters
+    /// that need gravity for jumping/falling) or to disable gravity on dynamic bodies.
     pub fn with_gravity(mut self, affected: bool) -> Self {
-        if !affected && self.body_type == BodyType::Dynamic {
-            // If disabling gravity on a dynamic body, it becomes kinematic
-            self.body_type = BodyType::Kinematic;
-        } else if affected && self.body_type == BodyType::Kinematic {
-            // If enabling gravity on a kinematic body, it becomes dynamic
-            self.body_type = BodyType::Dynamic;
-        }
+        self.gravity_enabled = affected;
+        self
+    }
+
+    /// Set whether gravity applies to this body (independent of body type)
+    ///
+    /// This is equivalent to `with_gravity()` but with a more explicit name.
+    pub fn with_gravity_enabled(mut self, enabled: bool) -> Self {
+        self.gravity_enabled = enabled;
         self
     }
 
@@ -160,8 +175,10 @@ impl RigidBody4D {
     pub fn with_static(mut self, is_static: bool) -> Self {
         if is_static {
             self.body_type = BodyType::Static;
+            self.gravity_enabled = false;
         } else if self.body_type == BodyType::Static {
             self.body_type = BodyType::Dynamic;
+            self.gravity_enabled = true;
         }
         self
     }
