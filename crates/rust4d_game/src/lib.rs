@@ -13,5 +13,5 @@ pub mod fsm;
 pub mod scene_helpers;
 
 pub use character_controller::{CharacterController4D, CharacterConfig};
-pub use events::EventBus;
+pub use events::{EventBus, HandlerId};
 pub use fsm::StateMachine;
