@@ -3,7 +3,7 @@
 //! This module converts the abstract shape data from rust4d_core into
 //! GPU-compatible vertex and tetrahedra buffers.
 
-use rust4d_core::{Entity, World, Material};
+use rust4d_core::{Entity, World, Material, Transform4D, ShapeRef};
 use rust4d_math::Vec4;
 use crate::pipeline::{Vertex4D, GpuTetrahedron};
 
@@ -57,18 +57,13 @@ impl RenderableGeometry {
     }
 
     /// Collect geometry from all entities in a world with a custom color function
+    ///
+    /// Iterates all entities with Transform4D, ShapeRef, and Material components
+    /// using ECS queries.
     pub fn from_world_with_color(world: &World, color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4]) -> Self {
-        // Estimate capacity
-        let mut total_vertices = 0;
-        let mut total_tetrahedra = 0;
-        for entity in world.iter() {
-            total_vertices += entity.shape().vertex_count();
-            total_tetrahedra += entity.shape().tetrahedron_count();
-        }
-
-        let mut result = Self::with_capacity(total_vertices, total_tetrahedra);
-        for entity in world.iter() {
-            result.add_entity_with_color(entity, color_fn);
+        let mut result = Self::new();
+        for (_entity, (transform, shape, material)) in world.ecs().query::<(&Transform4D, &ShapeRef, &Material)>().iter() {
+            result.add_components_with_color(transform, shape.as_shape(), material, color_fn);
         }
         result
     }
@@ -82,13 +77,26 @@ impl RenderableGeometry {
 
     /// Add an entity's geometry with a custom color function
     pub fn add_entity_with_color(&mut self, entity: &Entity, color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4]) {
-        let shape = entity.shape();
+        self.add_components_with_color(&entity.transform, entity.shape(), &entity.material, color_fn);
+    }
+
+    /// Add geometry from individual ECS components with a custom color function
+    ///
+    /// This is the core method that works with decomposed components rather than
+    /// a monolithic Entity struct.
+    pub fn add_components_with_color(
+        &mut self,
+        transform: &Transform4D,
+        shape: &dyn rust4d_math::ConvexShape4D,
+        material: &Material,
+        color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4],
+    ) {
         let vertex_offset = self.vertices.len();
 
         // Transform and add vertices
         for v in shape.vertices() {
-            let world_pos = entity.transform.transform_point(*v);
-            let color = color_fn(v, &entity.material);
+            let world_pos = transform.transform_point(*v);
+            let color = color_fn(v, material);
             self.vertices.push(Vertex4D::new(
                 [world_pos.x, world_pos.y, world_pos.z, world_pos.w],
                 color,
