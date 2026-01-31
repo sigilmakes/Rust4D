@@ -549,3 +549,4 @@ fn test_remove_entity_world_without_physics() {
     let removed = world.despawn(entity_key);
     assert!(removed, "Entity should be removed even without physics world");
 }
+

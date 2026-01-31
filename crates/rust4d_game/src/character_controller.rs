@@ -222,4 +222,75 @@ mod tests {
         let vel = physics.get_body(body_key).unwrap().velocity;
         assert_eq!(vel.y, 12.0, "Jump should use config.jump_velocity");
     }
+
+    #[test]
+    fn test_stale_body_key_returns_none() {
+        let mut physics = PhysicsWorld::new();
+        let body_key = create_player_body(&mut physics, Vec4::new(0.0, 1.0, 0.0, 0.0));
+        let controller = CharacterController4D::new(body_key, CharacterConfig::default());
+
+        // Remove the body from the physics world
+        physics.remove_body(body_key);
+
+        // Position should return None for stale key
+        assert!(
+            controller.position(&physics).is_none(),
+            "Position should return None for removed body"
+        );
+
+        // is_grounded should return false for stale key
+        assert!(
+            !controller.is_grounded(&physics),
+            "is_grounded should return false for removed body"
+        );
+
+        // jump should return false for stale key
+        assert!(
+            !controller.jump(&mut physics),
+            "jump should return false for removed body"
+        );
+
+        // apply_movement should not panic for stale key
+        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 1.0, 0.0));
+    }
+
+    #[test]
+    fn test_apply_movement_with_zero_vector() {
+        let mut physics = PhysicsWorld::with_config(PhysicsConfig::new(0.0)); // No gravity
+        let body_key = physics.add_body(
+            RigidBody4D::new_sphere(Vec4::new(0.0, 1.0, 0.0, 0.0), 0.5)
+                .with_body_type(BodyType::Kinematic),
+        );
+
+        let controller = CharacterController4D::new(
+            body_key,
+            CharacterConfig { move_speed: 5.0, jump_velocity: 8.0 },
+        );
+
+        // First apply some movement
+        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 1.0, 0.0));
+        physics.step(0.016);
+
+        // Now apply zero movement -- should stop horizontal movement
+        controller.apply_movement(&mut physics, Vec4::ZERO);
+        physics.step(0.016);
+
+        let body = physics.get_body(body_key).unwrap();
+        // Horizontal velocity should be zero (XZW)
+        assert!(
+            body.velocity.x.abs() < 0.001,
+            "X velocity should be ~0 after zero movement, got {}",
+            body.velocity.x
+        );
+        assert!(
+            body.velocity.z.abs() < 0.001,
+            "Z velocity should be ~0 after zero movement, got {}",
+            body.velocity.z
+        );
+        assert!(
+            body.velocity.w.abs() < 0.001,
+            "W velocity should be ~0 after zero movement, got {}",
+            body.velocity.w
+        );
+    }
 }

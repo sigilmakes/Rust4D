@@ -137,4 +137,60 @@ mod tests {
         let pos = spawn.unwrap();
         assert_eq!(pos, Vec4::ZERO);
     }
+
+    /// T5: create_player_body + CharacterController4D round-trip
+    #[test]
+    fn test_create_player_body_with_character_controller_round_trip() {
+        use crate::{CharacterController4D, CharacterConfig};
+        use rust4d_physics::StaticCollider;
+
+        let mut physics = PhysicsWorld::with_config(PhysicsConfig::new(-20.0));
+        physics.add_static_collider(StaticCollider::floor(0.0, rust4d_physics::PhysicsMaterial::CONCRETE));
+
+        // Create player body via scene_helpers
+        let spawn = Vec4::new(0.0, 1.0, 0.0, 0.0);
+        let key = create_player_body(&mut physics, spawn, 0.5);
+
+        // Wrap in CharacterController4D
+        let controller = CharacterController4D::new(key, CharacterConfig {
+            move_speed: 5.0,
+            jump_velocity: 10.0,
+        });
+
+        // Verify initial position matches spawn
+        let pos = controller.position(&physics).expect("Body should exist");
+        assert_eq!(pos, spawn, "Initial position should match spawn");
+
+        // Apply movement and step
+        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 0.0, 0.0));
+        physics.step(0.016);
+
+        // Position should have changed
+        let pos_after = controller.position(&physics).expect("Body should still exist");
+        assert!(
+            (pos_after.x - spawn.x).abs() > 0.01,
+            "X position should change after movement. Before: {}, After: {}",
+            spawn.x, pos_after.x
+        );
+
+        // Step physics until grounded
+        for _ in 0..100 {
+            controller.apply_movement(&mut physics, Vec4::ZERO);
+            physics.step(1.0 / 60.0);
+        }
+
+        // Should be grounded after falling
+        assert!(
+            controller.is_grounded(&physics),
+            "Controller should report grounded after settling"
+        );
+
+        // Jump should succeed when grounded
+        let jumped = controller.jump(&mut physics);
+        assert!(jumped, "Jump should succeed when grounded");
+        assert!(
+            !controller.is_grounded(&physics),
+            "Should not be grounded after jump"
+        );
+    }
 }
