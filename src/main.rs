@@ -18,6 +18,7 @@ use input::{InputMapper, InputAction};
 use systems::{RenderError, RenderSystem, SimulationSystem, WindowSystem};
 
 use rust4d_core::{World, SceneManager, Transform4D, ShapeRef, Material, Tags};
+use rust4d_game::{CharacterController4D, CharacterConfig};
 use rust4d_render::{
     camera4d::Camera4D,
     RenderableGeometry, CheckerboardGeometry, position_gradient_color,
@@ -41,6 +42,8 @@ struct App {
     geometry: RenderableGeometry,
     camera: Camera4D,
     controller: CameraController,
+    /// Character controller for player movement (None if no player body)
+    character: Option<CharacterController4D>,
     /// Simulation system for game loop
     simulation: SimulationSystem,
 }
@@ -104,6 +107,17 @@ impl App {
             .with_smoothing_half_life(config.input.smoothing_half_life)
             .with_smoothing(config.input.smoothing_enabled);
 
+        // Create character controller from the player body key (if the scene has a player)
+        let character = scene_manager
+            .active_scene()
+            .and_then(|s| s.player_body_key)
+            .map(|key| {
+                CharacterController4D::new(key, CharacterConfig {
+                    move_speed: config.input.move_speed,
+                    jump_velocity: config.physics.jump_velocity,
+                })
+            });
+
         Self {
             config,
             window_system: None,
@@ -112,6 +126,7 @@ impl App {
             geometry,
             camera,
             controller,
+            character,
             simulation: SimulationSystem::new(),
         }
     }
@@ -258,6 +273,7 @@ impl ApplicationHandler for App {
                     &mut self.scene_manager,
                     &mut self.camera,
                     &mut self.controller,
+                    self.character.as_ref(),
                     cursor_captured,
                 );
 
