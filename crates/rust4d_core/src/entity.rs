@@ -1,12 +1,13 @@
-//! Entity and Material types
+//! Entity-related types: Material, ShapeRef, DirtyFlags, EntityTemplate
 //!
-//! An Entity represents an object in the 4D world with a transform, shape, and material.
+//! These types represent visual and tracking properties of entities in the 4D world.
+//! The Entity struct has been removed -- entities are now spawned directly as
+//! ECS component tuples via `world.spawn(...)` or `EntityTemplate::spawn_in(...)`.
 
 use std::collections::HashSet;
 use std::sync::Arc;
 use bitflags::bitflags;
 use rust4d_math::ConvexShape4D;
-use rust4d_physics::BodyKey;
 use serde::{Serialize, Deserialize};
 use crate::Transform4D;
 use crate::shapes::ShapeTemplate;
@@ -108,158 +109,11 @@ impl ShapeRef {
     }
 }
 
-/// An entity in the 4D world
-///
-/// Each entity has:
-/// - An optional name (for lookup by name)
-/// - Tags (for categorization and filtering)
-/// - A transform (position, rotation, scale)
-/// - A shape (the geometry)
-/// - A material (visual properties)
-/// - An optional physics body key (links to PhysicsWorld)
-/// - Dirty flags (for change tracking)
-pub struct Entity {
-    /// Optional name for this entity (for lookup)
-    pub name: Option<String>,
-    /// Tags for categorization (e.g., "dynamic", "static", "enemy")
-    pub tags: HashSet<String>,
-    /// The entity's transform in world space
-    pub transform: Transform4D,
-    /// The entity's shape
-    pub shape: ShapeRef,
-    /// The entity's material
-    pub material: Material,
-    /// Optional physics body key (links to PhysicsWorld)
-    pub physics_body: Option<BodyKey>,
-    /// Dirty flags for change tracking (what needs rebuilding)
-    dirty: DirtyFlags,
-}
-
-impl Entity {
-    /// Create a new entity with the given shape
-    pub fn new(shape: ShapeRef) -> Self {
-        Self {
-            name: None,
-            tags: HashSet::new(),
-            transform: Transform4D::identity(),
-            shape,
-            material: Material::default(),
-            physics_body: None,
-            dirty: DirtyFlags::ALL, // New entities are dirty
-        }
-    }
-
-    /// Create a new entity with shape and material
-    pub fn with_material(shape: ShapeRef, material: Material) -> Self {
-        Self {
-            name: None,
-            tags: HashSet::new(),
-            transform: Transform4D::identity(),
-            shape,
-            material,
-            physics_body: None,
-            dirty: DirtyFlags::ALL, // New entities are dirty
-        }
-    }
-
-    /// Create a new entity with shape, transform, and material
-    pub fn with_transform(shape: ShapeRef, transform: Transform4D, material: Material) -> Self {
-        Self {
-            name: None,
-            tags: HashSet::new(),
-            transform,
-            shape,
-            material,
-            physics_body: None,
-            dirty: DirtyFlags::ALL, // New entities are dirty
-        }
-    }
-
-    /// Set the name of this entity (for lookup)
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    /// Add a tag to this entity
-    pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
-        self.tags.insert(tag.into());
-        self
-    }
-
-    /// Add multiple tags to this entity
-    pub fn with_tags(mut self, tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        for tag in tags {
-            self.tags.insert(tag.into());
-        }
-        self
-    }
-
-    /// Check if this entity has a specific tag
-    pub fn has_tag(&self, tag: &str) -> bool {
-        self.tags.contains(tag)
-    }
-
-    /// Attach a physics body to this entity
-    pub fn with_physics_body(mut self, key: BodyKey) -> Self {
-        self.physics_body = Some(key);
-        self
-    }
-
-    /// Get the shape of this entity
-    pub fn shape(&self) -> &dyn ConvexShape4D {
-        self.shape.as_shape()
-    }
-
-    // --- Dirty tracking methods ---
-
-    /// Check if this entity has any dirty flags set
-    #[inline]
-    pub fn is_dirty(&self) -> bool {
-        !self.dirty.is_empty()
-    }
-
-    /// Get the current dirty flags
-    #[inline]
-    pub fn dirty_flags(&self) -> DirtyFlags {
-        self.dirty
-    }
-
-    /// Mark this entity as dirty with the given flags
-    #[inline]
-    pub fn mark_dirty(&mut self, flags: DirtyFlags) {
-        self.dirty |= flags;
-    }
-
-    /// Clear all dirty flags
-    #[inline]
-    pub fn clear_dirty(&mut self) {
-        self.dirty = DirtyFlags::NONE;
-    }
-
-    /// Set the position and mark the transform as dirty
-    pub fn set_position(&mut self, position: rust4d_math::Vec4) {
-        self.transform.position = position;
-        self.mark_dirty(DirtyFlags::TRANSFORM);
-    }
-
-    /// Set the transform and mark it as dirty
-    pub fn set_transform(&mut self, transform: Transform4D) {
-        self.transform = transform;
-        self.mark_dirty(DirtyFlags::TRANSFORM);
-    }
-
-    /// Set the material and mark it as dirty
-    pub fn set_material(&mut self, material: Material) {
-        self.material = material;
-        self.mark_dirty(DirtyFlags::MATERIAL);
-    }
-}
-
 /// A serializable entity template
 ///
-/// EntityTemplate is used for scene serialization. Unlike Entity, it stores
-/// a ShapeTemplate (enum) rather than a trait object, making it serializable.
+/// EntityTemplate is used for scene serialization. It stores a ShapeTemplate (enum)
+/// rather than a trait object, making it serializable. Use `spawn_in()` to
+/// instantiate as an entity in a World.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityTemplate {
     /// Optional name for this entity (for lookup)
@@ -299,28 +153,33 @@ impl EntityTemplate {
         self
     }
 
-    /// Convert this template to an Entity
-    pub fn to_entity(&self) -> Entity {
+    /// Spawn this template as an entity in the given World
+    ///
+    /// Creates the shape from the template and spawns an entity with all
+    /// configured components (shape, transform, material, dirty flags,
+    /// optional name and tags).
+    pub fn spawn_in(&self, world: &mut crate::World) -> hecs::Entity {
         let shape = self.shape.create_shape();
-        let mut entity = Entity::with_transform(
-            ShapeRef::Owned(shape),
-            self.transform,
-            self.material,
-        );
+        let mut builder = hecs::EntityBuilder::new();
+        builder.add(ShapeRef::Owned(shape));
+        builder.add(self.transform);
+        builder.add(self.material);
+        builder.add(DirtyFlags::ALL);
         if let Some(ref name) = self.name {
-            entity = entity.with_name(name.clone());
+            builder.add(crate::components::Name(name.clone()));
         }
-        for tag in &self.tags {
-            entity = entity.with_tag(tag.clone());
+        if !self.tags.is_empty() {
+            let tags: HashSet<String> = self.tags.iter().cloned().collect();
+            builder.add(crate::components::Tags(tags));
         }
-        entity
+        world.spawn(builder.build())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust4d_math::{Vec4, Tesseract4D};
+    use rust4d_math::Tesseract4D;
 
     #[test]
     fn test_material_default() {
@@ -366,40 +225,6 @@ mod tests {
         assert_eq!(shape_ref.as_shape().vertex_count(), 16);
     }
 
-    #[test]
-    fn test_entity_new() {
-        let tesseract = Tesseract4D::new(2.0);
-        let entity = Entity::new(ShapeRef::shared(tesseract));
-
-        assert_eq!(entity.shape().vertex_count(), 16);
-        assert_eq!(entity.material.base_color, [1.0, 1.0, 1.0, 1.0]);
-    }
-
-    #[test]
-    fn test_entity_with_material() {
-        let tesseract = Tesseract4D::new(2.0);
-        let entity = Entity::with_material(
-            ShapeRef::shared(tesseract),
-            Material::RED,
-        );
-
-        assert_eq!(entity.material.base_color, [1.0, 0.0, 0.0, 1.0]);
-    }
-
-    #[test]
-    fn test_entity_with_transform() {
-        let tesseract = Tesseract4D::new(2.0);
-        let transform = Transform4D::from_position(Vec4::new(1.0, 2.0, 3.0, 4.0));
-        let entity = Entity::with_transform(
-            ShapeRef::shared(tesseract),
-            transform,
-            Material::BLUE,
-        );
-
-        assert_eq!(entity.transform.position.x, 1.0);
-        assert_eq!(entity.material.base_color, [0.0, 0.0, 1.0, 1.0]);
-    }
-
     // --- Dirty tracking tests ---
 
     #[test]
@@ -426,93 +251,36 @@ mod tests {
     }
 
     #[test]
-    fn test_new_entity_is_dirty() {
-        let tesseract = Tesseract4D::new(2.0);
-        let entity = Entity::new(ShapeRef::shared(tesseract));
+    fn test_entity_template_spawn_in() {
+        use crate::shapes::ShapeTemplate;
+        use rust4d_math::Vec4;
 
-        assert!(entity.is_dirty());
-        assert_eq!(entity.dirty_flags(), DirtyFlags::ALL);
-    }
+        let template = EntityTemplate::new(
+            ShapeTemplate::tesseract(2.0),
+            Transform4D::from_position(Vec4::new(1.0, 2.0, 3.0, 4.0)),
+            Material::RED,
+        ).with_name("my_cube").with_tag("dynamic");
 
-    #[test]
-    fn test_entity_clear_dirty() {
-        let tesseract = Tesseract4D::new(2.0);
-        let mut entity = Entity::new(ShapeRef::shared(tesseract));
+        let mut world = crate::World::new();
+        let entity = template.spawn_in(&mut world);
 
-        assert!(entity.is_dirty());
-        entity.clear_dirty();
-        assert!(!entity.is_dirty());
-        assert_eq!(entity.dirty_flags(), DirtyFlags::NONE);
-    }
+        // Verify components
+        let name = world.ecs().get::<&crate::components::Name>(entity).unwrap();
+        assert_eq!(name.0, "my_cube");
 
-    #[test]
-    fn test_entity_mark_dirty() {
-        let tesseract = Tesseract4D::new(2.0);
-        let mut entity = Entity::new(ShapeRef::shared(tesseract));
-        entity.clear_dirty();
+        let tags = world.ecs().get::<&crate::components::Tags>(entity).unwrap();
+        assert!(tags.has("dynamic"));
 
-        assert!(!entity.is_dirty());
+        let transform = world.ecs().get::<&Transform4D>(entity).unwrap();
+        assert_eq!(transform.position.x, 1.0);
 
-        entity.mark_dirty(DirtyFlags::TRANSFORM);
-        assert!(entity.is_dirty());
-        assert!(entity.dirty_flags().contains(DirtyFlags::TRANSFORM));
-        assert!(!entity.dirty_flags().contains(DirtyFlags::MESH));
-    }
+        let material = world.ecs().get::<&Material>(entity).unwrap();
+        assert_eq!(material.base_color, [1.0, 0.0, 0.0, 1.0]);
 
-    #[test]
-    fn test_set_position_marks_dirty() {
-        let tesseract = Tesseract4D::new(2.0);
-        let mut entity = Entity::new(ShapeRef::shared(tesseract));
-        entity.clear_dirty();
+        let shape = world.ecs().get::<&ShapeRef>(entity).unwrap();
+        assert_eq!(shape.as_shape().vertex_count(), 16);
 
-        entity.set_position(Vec4::new(1.0, 2.0, 3.0, 4.0));
-
-        assert!(entity.is_dirty());
-        assert!(entity.dirty_flags().contains(DirtyFlags::TRANSFORM));
-        assert_eq!(entity.transform.position.x, 1.0);
-    }
-
-    #[test]
-    fn test_set_transform_marks_dirty() {
-        let tesseract = Tesseract4D::new(2.0);
-        let mut entity = Entity::new(ShapeRef::shared(tesseract));
-        entity.clear_dirty();
-
-        let new_transform = Transform4D::from_position(Vec4::new(5.0, 6.0, 7.0, 8.0));
-        entity.set_transform(new_transform);
-
-        assert!(entity.is_dirty());
-        assert!(entity.dirty_flags().contains(DirtyFlags::TRANSFORM));
-        assert_eq!(entity.transform.position.x, 5.0);
-    }
-
-    #[test]
-    fn test_set_material_marks_dirty() {
-        let tesseract = Tesseract4D::new(2.0);
-        let mut entity = Entity::new(ShapeRef::shared(tesseract));
-        entity.clear_dirty();
-
-        entity.set_material(Material::RED);
-
-        assert!(entity.is_dirty());
-        assert!(entity.dirty_flags().contains(DirtyFlags::MATERIAL));
-        assert!(!entity.dirty_flags().contains(DirtyFlags::TRANSFORM));
-        assert_eq!(entity.material.base_color, [1.0, 0.0, 0.0, 1.0]);
-    }
-
-    #[test]
-    fn test_mark_dirty_combines_flags() {
-        let tesseract = Tesseract4D::new(2.0);
-        let mut entity = Entity::new(ShapeRef::shared(tesseract));
-        entity.clear_dirty();
-
-        entity.mark_dirty(DirtyFlags::TRANSFORM);
-        entity.mark_dirty(DirtyFlags::MATERIAL);
-
-        // Both flags should be set
-        let flags = entity.dirty_flags();
-        assert!(flags.contains(DirtyFlags::TRANSFORM));
-        assert!(flags.contains(DirtyFlags::MATERIAL));
-        assert!(!flags.contains(DirtyFlags::MESH));
+        // Verify name index works
+        assert!(world.get_by_name("my_cube").is_some());
     }
 }

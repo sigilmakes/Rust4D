@@ -97,7 +97,9 @@ impl Children {
     }
 
     pub fn remove(&mut self, child: hecs::Entity) {
-        self.0.retain(|&c| c != child);
+        if let Some(pos) = self.0.iter().position(|&c| c == child) {
+            self.0.swap_remove(pos);
+        }
     }
 
     pub fn contains(&self, child: hecs::Entity) -> bool {

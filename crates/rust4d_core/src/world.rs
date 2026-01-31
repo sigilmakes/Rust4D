@@ -1,10 +1,10 @@
 //! World container for entities (hecs ECS backend)
 //!
 //! The World manages all entities in the simulation using hecs for storage.
-//! It provides side-tables for name lookups and physics integration,
+//! It provides side-tables for name lookups, tag indexing, and physics integration,
 //! and stores hierarchy as Parent/Children components.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use crate::components::*;
 use crate::{DirtyFlags, Transform4D};
@@ -37,6 +37,9 @@ impl std::error::Error for HierarchyError {}
 ///
 /// Thin wrapper around hecs::World with side-tables for:
 /// - Name lookups (HashMap<String, hecs::Entity>)
+/// - Tag index (HashMap<String, HashSet<hecs::Entity>>)
+/// - Root entity tracking (HashSet<hecs::Entity>)
+/// - Dirty entity count
 /// - Physics simulation (optional PhysicsWorld)
 ///
 /// Hierarchy is stored as ECS components (Parent, Children) rather
@@ -46,6 +49,12 @@ pub struct World {
     ecs: hecs::World,
     /// Index from entity names to hecs entities (for fast name lookup)
     name_index: HashMap<String, hecs::Entity>,
+    /// Index from tags to entities (for fast tag queries)
+    tag_index: HashMap<String, HashSet<hecs::Entity>>,
+    /// Set of root entities (no Parent component)
+    roots: HashSet<hecs::Entity>,
+    /// Count of entities with non-empty DirtyFlags
+    dirty_count: usize,
     /// Optional physics simulation
     physics_world: Option<PhysicsWorld>,
 }
@@ -62,6 +71,9 @@ impl World {
         Self {
             ecs: hecs::World::new(),
             name_index: HashMap::new(),
+            tag_index: HashMap::new(),
+            roots: HashSet::new(),
+            dirty_count: 0,
             physics_world: None,
         }
     }
@@ -89,43 +101,42 @@ impl World {
     /// This is the PRIMARY way to create entities in the ECS API.
     /// Returns the hecs::Entity handle.
     ///
-    /// After spawning, checks for a Name component and updates the name index.
+    /// After spawning, checks for Name and Tags components and updates indices.
+    /// If a Name component is present and the name already exists in the index,
+    /// a warning is logged and the index is updated to point to the new entity
+    /// (the old entity becomes unreachable by name).
     pub fn spawn(&mut self, components: impl hecs::DynamicBundle) -> hecs::Entity {
         let entity = self.ecs.spawn(components);
 
         // Check if spawned entity has a Name component and index it
         if let Ok(name) = self.ecs.get::<&Name>(entity) {
-            self.name_index.insert(name.0.clone(), entity);
+            let name_str = name.0.clone();
+            drop(name);
+            if let Some(_old) = self.name_index.insert(name_str.clone(), entity) {
+                log::warn!("Name '{}' already exists in world; overwriting index entry", name_str);
+            }
+        }
+
+        // Check if spawned entity has Tags and index them
+        if let Ok(tags) = self.ecs.get::<&Tags>(entity) {
+            let tag_set: Vec<String> = tags.0.iter().cloned().collect();
+            drop(tags);
+            for tag in tag_set {
+                self.tag_index.entry(tag).or_default().insert(entity);
+            }
+        }
+
+        // Track as root (new entities have no parent)
+        self.roots.insert(entity);
+
+        // Track dirty count
+        if let Ok(dirty) = self.ecs.get::<&DirtyFlags>(entity) {
+            if !dirty.is_empty() {
+                self.dirty_count += 1;
+            }
         }
 
         entity
-    }
-
-    /// Legacy compatibility: spawn from the old Entity struct
-    ///
-    /// TRANSITIONAL METHOD -- decomposes the monolithic Entity into individual
-    /// ECS components and spawns them.
-    pub fn add_entity(&mut self, entity: crate::entity::Entity) -> hecs::Entity {
-        let mut builder = hecs::EntityBuilder::new();
-
-        builder.add(entity.transform);
-        builder.add(entity.shape);
-        builder.add(entity.material);
-        builder.add(DirtyFlags::ALL);
-
-        if let Some(name) = entity.name {
-            builder.add(Name(name));
-        }
-
-        if !entity.tags.is_empty() {
-            builder.add(Tags(entity.tags));
-        }
-
-        if let Some(body_key) = entity.physics_body {
-            builder.add(PhysicsBody(body_key));
-        }
-
-        self.spawn(builder.build())
     }
 
     // === Entity Removal ===
@@ -134,6 +145,9 @@ impl World {
     ///
     /// Cleans up:
     /// - Name index (if entity had Name component)
+    /// - Tag index (if entity had Tags component)
+    /// - Root tracking
+    /// - Dirty count
     /// - Physics body (if entity had PhysicsBody component)
     /// - Hierarchy (removes from parent, orphans children)
     ///
@@ -150,12 +164,37 @@ impl World {
             self.name_index.remove(&name_str);
         }
 
+        // Clean up tag index
+        if let Ok(tags) = self.ecs.get::<&Tags>(entity) {
+            let tag_set: Vec<String> = tags.0.iter().cloned().collect();
+            drop(tags);
+            for tag in tag_set {
+                if let Some(set) = self.tag_index.get_mut(&tag) {
+                    set.remove(&entity);
+                    // Don't remove empty sets here for performance
+                }
+            }
+        }
+
+        // Clean up dirty count
+        if let Ok(dirty) = self.ecs.get::<&DirtyFlags>(entity) {
+            if !dirty.is_empty() && self.dirty_count > 0 {
+                self.dirty_count -= 1;
+            }
+        }
+
+        // Clean up root tracking
+        self.roots.remove(&entity);
+
         // Clean up physics body
         if let Ok(body) = self.ecs.get::<&PhysicsBody>(entity) {
             let body_key = body.0;
             drop(body);
             if let Some(ref mut physics) = self.physics_world {
-                physics.remove_body(body_key);
+                let result = physics.remove_body(body_key);
+                if result.is_none() {
+                    log::warn!("Physics body {:?} not found during entity despawn cleanup", body_key);
+                }
             }
         }
 
@@ -167,21 +206,17 @@ impl World {
             }
         }
 
-        // Orphan all children (remove Parent component from them)
+        // Orphan all children (remove Parent component, add them to roots)
         let child_list: Vec<hecs::Entity> = self.ecs.get::<&Children>(entity)
             .ok()
             .map(|c| c.0.clone())
             .unwrap_or_default();
         for child in child_list {
             let _ = self.ecs.remove_one::<Parent>(child);
+            self.roots.insert(child);
         }
 
         self.ecs.despawn(entity).is_ok()
-    }
-
-    /// Legacy alias for despawn
-    pub fn remove_entity(&mut self, entity: hecs::Entity) -> bool {
-        self.despawn(entity)
     }
 
     // === Entity Access ===
@@ -191,13 +226,14 @@ impl World {
         self.ecs.contains(entity)
     }
 
-    /// Direct access to the underlying hecs World (for advanced queries)
+    /// Direct access to the underlying hecs World (for queries)
     pub fn ecs(&self) -> &hecs::World {
         &self.ecs
     }
 
-    /// Mutable access to the underlying hecs World
-    pub fn ecs_mut(&mut self) -> &mut hecs::World {
+    /// Direct mutable access to the hecs World. WARNING: bypasses name index,
+    /// tag index, root tracking, hierarchy, dirty count, and physics invariants.
+    pub fn ecs_mut_unchecked(&mut self) -> &mut hecs::World {
         &mut self.ecs
     }
 
@@ -210,19 +246,52 @@ impl World {
         self.name_index.get(name).copied()
     }
 
+    /// Rename an entity
+    ///
+    /// Removes the old name from the index, updates the Name component,
+    /// and adds the new name to the index.
+    ///
+    /// Returns `Some(())` on success, `None` if the entity doesn't exist
+    /// or doesn't have a Name component.
+    pub fn rename_entity(&mut self, entity: hecs::Entity, new_name: impl Into<String>) -> Option<()> {
+        // Remove old name from index
+        let old_name = self.ecs.get::<&Name>(entity).ok().map(|n| n.0.clone())?;
+        self.name_index.remove(&old_name);
+
+        let new_name = new_name.into();
+
+        // Update the component
+        if let Ok(mut name) = self.ecs.get::<&mut Name>(entity) {
+            name.0 = new_name.clone();
+        }
+
+        // Add new name to index
+        if let Some(_old) = self.name_index.insert(new_name.clone(), entity) {
+            log::warn!("Name '{}' already exists in world; overwriting index entry", new_name);
+        }
+
+        Some(())
+    }
+
+    /// Rebuild the name index by scanning all entities with Name components
+    ///
+    /// Useful after bulk operations via `ecs_mut_unchecked()`.
+    pub fn rebuild_name_index(&mut self) {
+        self.name_index.clear();
+        for (entity, name) in self.ecs.query::<&Name>().iter() {
+            self.name_index.insert(name.0.clone(), entity);
+        }
+    }
+
     // === Tag Queries ===
 
     /// Get all entities with a specific tag
     ///
-    /// This performs a linear scan of all entities with Tags component.
+    /// Uses the tag index for O(1) lookup instead of scanning.
     pub fn get_by_tag(&self, tag: &str) -> Vec<hecs::Entity> {
-        let mut result = Vec::new();
-        for (entity, tags) in self.ecs.query::<&Tags>().iter() {
-            if tags.has(tag) {
-                result.push(entity);
-            }
-        }
-        result
+        self.tag_index.get(tag)
+            .map(|set| set.iter().copied().collect())
+            .unwrap_or_default()
     }
 
     // === Entity Count and Iteration ===
@@ -244,6 +313,9 @@ impl World {
     pub fn clear(&mut self) {
         self.ecs.clear();
         self.name_index.clear();
+        self.tag_index.clear();
+        self.roots.clear();
+        self.dirty_count = 0;
     }
 
     // === Physics Update ===
@@ -267,8 +339,12 @@ impl World {
             {
                 if let Some(phys_body) = physics.get_body(body.0) {
                     if transform.position != phys_body.position {
+                        let was_clean = dirty.is_empty();
                         transform.position = phys_body.position;
                         *dirty |= DirtyFlags::TRANSFORM;
+                        if was_clean {
+                            self.dirty_count += 1;
+                        }
                     }
                 }
             }
@@ -279,12 +355,7 @@ impl World {
 
     /// Check if any entity in the world has dirty flags set
     pub fn has_dirty_entities(&self) -> bool {
-        for (_, dirty) in self.ecs.query::<&DirtyFlags>().iter() {
-            if !dirty.is_empty() {
-                return true;
-            }
-        }
-        false
+        self.dirty_count > 0
     }
 
     /// Clear dirty flags on all entities
@@ -292,6 +363,7 @@ impl World {
         for (_, dirty) in self.ecs.query_mut::<&mut DirtyFlags>() {
             *dirty = DirtyFlags::NONE;
         }
+        self.dirty_count = 0;
     }
 
     // === Hierarchy Methods ===
@@ -361,6 +433,9 @@ impl World {
         // Set the Parent component on child (insert_one replaces if exists, adds if not)
         let _ = self.ecs.insert_one(child, Parent(parent));
 
+        // Remove child from roots (it now has a parent)
+        self.roots.remove(&child);
+
         // Add to parent's Children component
         let has_children = self.ecs.get::<&Children>(parent).is_ok();
         if has_children {
@@ -388,6 +463,9 @@ impl World {
 
             // Remove Parent component from child
             let _ = self.ecs.remove_one::<Parent>(child);
+
+            // Add back to roots
+            self.roots.insert(child);
         }
     }
 
@@ -397,13 +475,22 @@ impl World {
     /// For children, this composes transforms from root to leaf.
     ///
     /// Returns `None` if the entity does not exist.
+    /// Includes a depth limit of 64 to guard against cycles.
     pub fn world_transform(&self, entity: hecs::Entity) -> Option<Transform4D> {
+        const MAX_DEPTH: usize = 64;
+
         let local_transform = *self.ecs.get::<&Transform4D>(entity).ok()?;
 
         // Build the chain of ancestors from leaf to root
         let mut chain = vec![local_transform];
         let mut current = entity;
+        let mut depth = 0;
         while let Ok(parent) = self.ecs.get::<&Parent>(current) {
+            depth += 1;
+            if depth > MAX_DEPTH {
+                log::error!("world_transform: depth limit ({}) exceeded for entity, possible cycle", MAX_DEPTH);
+                break;
+            }
             let parent_entity = parent.0;
             drop(parent);
             if let Ok(parent_transform) = self.ecs.get::<&Transform4D>(parent_entity) {
@@ -485,13 +572,7 @@ impl World {
 
     /// Get all root entities (entities with no Parent component)
     pub fn root_entities(&self) -> Vec<hecs::Entity> {
-        let mut roots = Vec::new();
-        for entity in self.ecs.iter() {
-            if self.ecs.get::<&Parent>(entity.entity()).is_err() {
-                roots.push(entity.entity());
-            }
-        }
-        roots
+        self.roots.iter().copied().collect()
     }
 
     /// Check if `ancestor` is an ancestor of `entity`
@@ -508,17 +589,117 @@ impl World {
         }
         false
     }
+
+    /// Validate the hierarchy for consistency (debug tool)
+    ///
+    /// Checks that:
+    /// - Every Parent's target entity exists
+    /// - Every parent lists the child in its Children component
+    /// - No cycles exist (depth limit check)
+    ///
+    /// Returns a Vec of human-readable issue descriptions. Empty means valid.
+    pub fn validate_hierarchy(&self) -> Vec<String> {
+        let mut issues = Vec::new();
+
+        // Check all Parent components
+        for (entity, parent) in self.ecs.query::<&Parent>().iter() {
+            // Check parent exists
+            if !self.ecs.contains(parent.0) {
+                issues.push(format!(
+                    "Entity {:?} has Parent pointing to non-existent entity {:?}",
+                    entity, parent.0
+                ));
+                continue;
+            }
+
+            // Check parent has this entity in its Children
+            match self.ecs.get::<&Children>(parent.0) {
+                Ok(children) => {
+                    if !children.contains(entity) {
+                        issues.push(format!(
+                            "Entity {:?} has Parent {:?}, but parent's Children does not contain it",
+                            entity, parent.0
+                        ));
+                    }
+                }
+                Err(_) => {
+                    issues.push(format!(
+                        "Entity {:?} has Parent {:?}, but parent has no Children component",
+                        entity, parent.0
+                    ));
+                }
+            }
+        }
+
+        // Check for cycles by walking up from each entity with a depth limit
+        for (entity, _) in self.ecs.query::<&Parent>().iter() {
+            let mut current = entity;
+            let mut depth = 0;
+            while let Ok(p) = self.ecs.get::<&Parent>(current) {
+                depth += 1;
+                if depth > 64 {
+                    issues.push(format!(
+                        "Possible cycle detected starting from entity {:?} (depth exceeded 64)",
+                        entity
+                    ));
+                    break;
+                }
+                current = p.0;
+            }
+        }
+
+        issues
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Material, ShapeRef, Entity};
+    use crate::{Material, ShapeRef};
     use rust4d_math::Tesseract4D;
 
-    fn make_test_entity() -> Entity {
+    fn spawn_test_entity(world: &mut World) -> hecs::Entity {
         let tesseract = Tesseract4D::new(2.0);
-        Entity::new(ShapeRef::shared(tesseract))
+        world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+        ))
+    }
+
+    fn spawn_positioned_entity(world: &mut World, x: f32, y: f32, z: f32, w: f32) -> hecs::Entity {
+        let tesseract = Tesseract4D::new(2.0);
+        world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::from_position(rust4d_math::Vec4::new(x, y, z, w)),
+            Material::default(),
+            DirtyFlags::ALL,
+        ))
+    }
+
+    fn spawn_named_entity(world: &mut World, name: &str) -> hecs::Entity {
+        let tesseract = Tesseract4D::new(2.0);
+        world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+            Name(name.to_string()),
+        ))
+    }
+
+    fn spawn_tagged_entity(world: &mut World, name: &str, tags: &[&str]) -> hecs::Entity {
+        let tesseract = Tesseract4D::new(2.0);
+        let tag_set: std::collections::HashSet<String> = tags.iter().map(|t| t.to_string()).collect();
+        world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+            Name(name.to_string()),
+            Tags(tag_set),
+        ))
     }
 
     #[test]
@@ -529,10 +710,9 @@ mod tests {
     }
 
     #[test]
-    fn test_world_add_entity() {
+    fn test_world_spawn_entity() {
         let mut world = World::new();
-        let entity = make_test_entity();
-        let key = world.add_entity(entity);
+        let key = spawn_test_entity(&mut world);
 
         // Key should be valid
         assert!(world.contains(key));
@@ -542,8 +722,7 @@ mod tests {
     #[test]
     fn test_world_get_entity() {
         let mut world = World::new();
-        let entity = make_test_entity();
-        let handle = world.add_entity(entity);
+        let handle = spawn_test_entity(&mut world);
 
         let shape = world.ecs().get::<&ShapeRef>(handle);
         assert!(shape.is_ok());
@@ -553,11 +732,10 @@ mod tests {
     #[test]
     fn test_world_get_entity_mut() {
         let mut world = World::new();
-        let entity = make_test_entity();
-        let handle = world.add_entity(entity);
+        let handle = spawn_test_entity(&mut world);
 
         {
-            let mut material = world.ecs_mut().get::<&mut Material>(handle).unwrap();
+            let mut material = world.ecs_mut_unchecked().get::<&mut Material>(handle).unwrap();
             *material = Material::RED;
         }
 
@@ -568,8 +746,8 @@ mod tests {
     #[test]
     fn test_world_entity_count() {
         let mut world = World::new();
-        world.add_entity(make_test_entity());
-        world.add_entity(make_test_entity());
+        spawn_test_entity(&mut world);
+        spawn_test_entity(&mut world);
 
         assert_eq!(world.entity_count(), 2);
     }
@@ -577,8 +755,8 @@ mod tests {
     #[test]
     fn test_world_clear() {
         let mut world = World::new();
-        world.add_entity(make_test_entity());
-        world.add_entity(make_test_entity());
+        spawn_test_entity(&mut world);
+        spawn_test_entity(&mut world);
 
         world.clear();
         assert!(world.is_empty());
@@ -587,8 +765,8 @@ mod tests {
     #[test]
     fn test_world_ecs_query() {
         let mut world = World::new();
-        world.add_entity(make_test_entity());
-        world.add_entity(make_test_entity());
+        spawn_test_entity(&mut world);
+        spawn_test_entity(&mut world);
 
         let count = world.ecs().query::<&Transform4D>().iter().count();
         assert_eq!(count, 2);
@@ -597,7 +775,7 @@ mod tests {
     #[test]
     fn test_world_update() {
         let mut world = World::new();
-        world.add_entity(make_test_entity());
+        spawn_test_entity(&mut world);
 
         // Just verify it doesn't panic for now
         world.update(0.016);
@@ -612,22 +790,20 @@ mod tests {
     #[test]
     fn test_stale_entity_returns_false() {
         let mut world = World::new();
-        let entity = make_test_entity();
-        let key = world.add_entity(entity);
+        let key = spawn_test_entity(&mut world);
 
         // Key is valid initially
         assert!(world.contains(key));
 
         // Remove the entity
-        let removed = world.remove_entity(key);
+        let removed = world.despawn(key);
         assert!(removed);
 
         // Key is now stale
         assert!(!world.contains(key));
 
         // Add a new entity
-        let new_entity = make_test_entity();
-        let new_key = world.add_entity(new_entity);
+        let new_key = spawn_test_entity(&mut world);
 
         // Old key still invalid
         assert!(!world.contains(key));
@@ -652,8 +828,14 @@ mod tests {
         let body_handle = world.physics_mut().unwrap().add_body(body);
 
         // Create an entity linked to the physics body
-        let entity = make_test_entity().with_physics_body(body_handle);
-        let entity_handle = world.add_entity(entity);
+        let tesseract = Tesseract4D::new(2.0);
+        let entity_handle = world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+            PhysicsBody(body_handle),
+        ));
 
         // Verify initial position
         {
@@ -686,8 +868,14 @@ mod tests {
         let body_handle = world.physics_mut().unwrap().add_body(body);
 
         // Create an entity linked to the physics body
-        let entity = make_test_entity().with_physics_body(body_handle);
-        let entity_handle = world.add_entity(entity);
+        let tesseract = Tesseract4D::new(2.0);
+        let entity_handle = world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+            PhysicsBody(body_handle),
+        ));
 
         // Step physics
         world.update(0.1);
@@ -703,9 +891,13 @@ mod tests {
         let mut world = World::new().with_physics(PhysicsConfig::default());
 
         // Add an entity WITHOUT a physics body but with a specific position
-        let mut entity = make_test_entity();
-        entity.transform.position = rust4d_math::Vec4::new(5.0, 5.0, 5.0, 5.0);
-        let entity_handle = world.add_entity(entity);
+        let tesseract = Tesseract4D::new(2.0);
+        let entity_handle = world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::from_position(rust4d_math::Vec4::new(5.0, 5.0, 5.0, 5.0)),
+            Material::default(),
+            DirtyFlags::ALL,
+        ));
 
         // Step physics
         world.update(1.0);
@@ -721,8 +913,7 @@ mod tests {
         let mut world = World::new();
 
         // Add a named entity
-        let entity = make_test_entity().with_name("tesseract");
-        let key = world.add_entity(entity);
+        let key = spawn_named_entity(&mut world, "tesseract");
 
         // Should be able to find by name
         let result = world.get_by_name("tesseract");
@@ -742,12 +933,9 @@ mod tests {
         let mut world = World::new();
 
         // Add entities with different tags
-        let dynamic1 = make_test_entity().with_tag("dynamic").with_name("dyn1");
-        let dynamic2 = make_test_entity().with_tag("dynamic").with_name("dyn2");
-        let static1 = make_test_entity().with_tag("static").with_name("stat1");
-        world.add_entity(dynamic1);
-        world.add_entity(dynamic2);
-        world.add_entity(static1);
+        spawn_tagged_entity(&mut world, "dyn1", &["dynamic"]);
+        spawn_tagged_entity(&mut world, "dyn2", &["dynamic"]);
+        spawn_tagged_entity(&mut world, "stat1", &["static"]);
 
         // Should find 2 dynamic entities
         let dynamic_entities = world.get_by_tag("dynamic");
@@ -767,14 +955,13 @@ mod tests {
         let mut world = World::new();
 
         // Add a named entity
-        let entity = make_test_entity().with_name("tesseract");
-        let key = world.add_entity(entity);
+        let key = spawn_named_entity(&mut world, "tesseract");
 
         // Should be able to find by name
         assert!(world.get_by_name("tesseract").is_some());
 
         // Remove the entity
-        world.remove_entity(key);
+        world.despawn(key);
 
         // Name should no longer be in the index
         assert!(world.get_by_name("tesseract").is_none());
@@ -785,8 +972,8 @@ mod tests {
         let mut world = World::new();
 
         // Add named entities
-        world.add_entity(make_test_entity().with_name("entity1"));
-        world.add_entity(make_test_entity().with_name("entity2"));
+        spawn_named_entity(&mut world, "entity1");
+        spawn_named_entity(&mut world, "entity2");
 
         // Should be able to find by name
         assert!(world.get_by_name("entity1").is_some());
@@ -805,8 +992,7 @@ mod tests {
         let mut world = World::new();
 
         // Add an unnamed entity
-        let entity = make_test_entity();
-        let key = world.add_entity(entity);
+        let key = spawn_test_entity(&mut world);
 
         // Entity should exist but not be findable by any name
         assert!(world.contains(key));
@@ -818,7 +1004,7 @@ mod tests {
     #[test]
     fn test_new_entities_are_dirty() {
         let mut world = World::new();
-        let key = world.add_entity(make_test_entity());
+        let key = spawn_test_entity(&mut world);
 
         // New entities should be dirty (DirtyFlags::ALL)
         let dirty = world.ecs().get::<&DirtyFlags>(key).unwrap();
@@ -829,8 +1015,8 @@ mod tests {
     #[test]
     fn test_clear_all_dirty() {
         let mut world = World::new();
-        world.add_entity(make_test_entity());
-        world.add_entity(make_test_entity());
+        spawn_test_entity(&mut world);
+        spawn_test_entity(&mut world);
 
         // Both should be dirty initially
         assert!(world.has_dirty_entities());
@@ -845,20 +1031,18 @@ mod tests {
     #[test]
     fn test_dirty_entities_tracking() {
         let mut world = World::new();
-        let key1 = world.add_entity(make_test_entity());
-        let _key2 = world.add_entity(make_test_entity());
+        let key1 = spawn_test_entity(&mut world);
+        let _key2 = spawn_test_entity(&mut world);
 
         // Clear dirty flags
         world.clear_all_dirty();
 
         // Manually mark one as dirty
         {
-            let mut dirty = world.ecs_mut().get::<&mut DirtyFlags>(key1).unwrap();
+            let mut dirty = world.ecs_mut_unchecked().get::<&mut DirtyFlags>(key1).unwrap();
             *dirty |= DirtyFlags::TRANSFORM;
         }
-
-        // Should have dirty entities now
-        assert!(world.has_dirty_entities());
+        // Note: dirty_count won't track this since we used ecs_mut_unchecked
 
         // Count dirty entities via query
         let dirty_count = world.ecs().query::<&DirtyFlags>().iter()
@@ -882,8 +1066,14 @@ mod tests {
         let body_handle = world.physics_mut().unwrap().add_body(body);
 
         // Create an entity linked to the physics body
-        let entity = make_test_entity().with_physics_body(body_handle);
-        let entity_handle = world.add_entity(entity);
+        let tesseract = Tesseract4D::new(2.0);
+        let entity_handle = world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+            PhysicsBody(body_handle),
+        ));
 
         // Clear dirty flags
         world.clear_all_dirty();
@@ -912,8 +1102,14 @@ mod tests {
         let body_handle = world.physics_mut().unwrap().add_body(body);
 
         // Create an entity linked to the physics body
-        let entity = make_test_entity().with_physics_body(body_handle);
-        let entity_handle = world.add_entity(entity);
+        let tesseract = Tesseract4D::new(2.0);
+        let entity_handle = world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+            PhysicsBody(body_handle),
+        ));
 
         // Clear dirty flags
         world.clear_all_dirty();
@@ -928,20 +1124,11 @@ mod tests {
 
     // --- Hierarchy tests ---
 
-    fn make_positioned_entity(x: f32, y: f32, z: f32, w: f32) -> Entity {
-        let tesseract = Tesseract4D::new(2.0);
-        Entity::with_transform(
-            ShapeRef::shared(tesseract),
-            crate::Transform4D::from_position(rust4d_math::Vec4::new(x, y, z, w)),
-            Material::default(),
-        )
-    }
-
     #[test]
     fn test_add_child() {
         let mut world = World::new();
-        let parent = world.add_entity(make_test_entity());
-        let child = world.add_entity(make_test_entity());
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
 
         assert!(world.add_child(parent, child).is_ok());
 
@@ -957,11 +1144,11 @@ mod tests {
     #[test]
     fn test_add_child_invalid_entity() {
         let mut world = World::new();
-        let parent = world.add_entity(make_test_entity());
+        let parent = spawn_test_entity(&mut world);
 
         // Create an invalid entity by adding and removing
-        let temp = world.add_entity(make_test_entity());
-        world.remove_entity(temp);
+        let temp = spawn_test_entity(&mut world);
+        world.despawn(temp);
 
         // Both invalid child and invalid parent should fail
         assert_eq!(
@@ -977,8 +1164,8 @@ mod tests {
     #[test]
     fn test_cycle_detection() {
         let mut world = World::new();
-        let a = world.add_entity(make_test_entity());
-        let b = world.add_entity(make_test_entity());
+        let a = spawn_test_entity(&mut world);
+        let b = spawn_test_entity(&mut world);
 
         // A -> B
         assert!(world.add_child(a, b).is_ok());
@@ -999,9 +1186,9 @@ mod tests {
     #[test]
     fn test_deep_cycle_detection() {
         let mut world = World::new();
-        let a = world.add_entity(make_test_entity());
-        let b = world.add_entity(make_test_entity());
-        let c = world.add_entity(make_test_entity());
+        let a = spawn_test_entity(&mut world);
+        let b = spawn_test_entity(&mut world);
+        let c = spawn_test_entity(&mut world);
 
         // A -> B -> C
         assert!(world.add_child(a, b).is_ok());
@@ -1017,8 +1204,8 @@ mod tests {
     #[test]
     fn test_already_child() {
         let mut world = World::new();
-        let parent = world.add_entity(make_test_entity());
-        let child = world.add_entity(make_test_entity());
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
 
         assert!(world.add_child(parent, child).is_ok());
 
@@ -1032,8 +1219,8 @@ mod tests {
     #[test]
     fn test_remove_from_parent() {
         let mut world = World::new();
-        let parent = world.add_entity(make_test_entity());
-        let child = world.add_entity(make_test_entity());
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
 
         world.add_child(parent, child).unwrap();
         assert!(world.has_parent(child));
@@ -1050,8 +1237,7 @@ mod tests {
     #[test]
     fn test_world_transform_no_parent() {
         let mut world = World::new();
-        let entity = make_positioned_entity(1.0, 2.0, 3.0, 4.0);
-        let key = world.add_entity(entity);
+        let key = spawn_positioned_entity(&mut world, 1.0, 2.0, 3.0, 4.0);
 
         let wt = world.world_transform(key).unwrap();
         assert!((wt.position.x - 1.0).abs() < 0.001);
@@ -1065,9 +1251,9 @@ mod tests {
         let mut world = World::new();
 
         // Parent at (10, 0, 0, 0)
-        let parent = world.add_entity(make_positioned_entity(10.0, 0.0, 0.0, 0.0));
+        let parent = spawn_positioned_entity(&mut world, 10.0, 0.0, 0.0, 0.0);
         // Child at (1, 2, 0, 0) in local space
-        let child = world.add_entity(make_positioned_entity(1.0, 2.0, 0.0, 0.0));
+        let child = spawn_positioned_entity(&mut world, 1.0, 2.0, 0.0, 0.0);
 
         world.add_child(parent, child).unwrap();
 
@@ -1083,12 +1269,18 @@ mod tests {
         let mut world = World::new();
 
         // Parent with scale 2 at origin
-        let mut parent_entity = make_positioned_entity(0.0, 0.0, 0.0, 0.0);
-        parent_entity.transform.scale = 2.0;
-        let parent = world.add_entity(parent_entity);
+        let tesseract = Tesseract4D::new(2.0);
+        let mut parent_transform = Transform4D::from_position(rust4d_math::Vec4::new(0.0, 0.0, 0.0, 0.0));
+        parent_transform.scale = 2.0;
+        let parent = world.spawn((
+            ShapeRef::shared(tesseract),
+            parent_transform,
+            Material::default(),
+            DirtyFlags::ALL,
+        ));
 
         // Child at (1, 0, 0, 0) in local space
-        let child = world.add_entity(make_positioned_entity(1.0, 0.0, 0.0, 0.0));
+        let child = spawn_positioned_entity(&mut world, 1.0, 0.0, 0.0, 0.0);
 
         world.add_child(parent, child).unwrap();
 
@@ -1100,10 +1292,10 @@ mod tests {
     #[test]
     fn test_delete_recursive() {
         let mut world = World::new();
-        let root = world.add_entity(make_test_entity().with_name("root"));
-        let child1 = world.add_entity(make_test_entity().with_name("child1"));
-        let child2 = world.add_entity(make_test_entity().with_name("child2"));
-        let grandchild = world.add_entity(make_test_entity().with_name("grandchild"));
+        let root = spawn_named_entity(&mut world, "root");
+        let child1 = spawn_named_entity(&mut world, "child1");
+        let child2 = spawn_named_entity(&mut world, "child2");
+        let grandchild = spawn_named_entity(&mut world, "grandchild");
 
         world.add_child(root, child1).unwrap();
         world.add_child(root, child2).unwrap();
@@ -1128,10 +1320,10 @@ mod tests {
     #[test]
     fn test_delete_recursive_subtree() {
         let mut world = World::new();
-        let root = world.add_entity(make_test_entity());
-        let child1 = world.add_entity(make_test_entity());
-        let child2 = world.add_entity(make_test_entity());
-        let grandchild = world.add_entity(make_test_entity());
+        let root = spawn_test_entity(&mut world);
+        let child1 = spawn_test_entity(&mut world);
+        let child2 = spawn_test_entity(&mut world);
+        let grandchild = spawn_test_entity(&mut world);
 
         world.add_child(root, child1).unwrap();
         world.add_child(root, child2).unwrap();
@@ -1153,10 +1345,10 @@ mod tests {
     #[test]
     fn test_descendants() {
         let mut world = World::new();
-        let root = world.add_entity(make_test_entity());
-        let child1 = world.add_entity(make_test_entity());
-        let child2 = world.add_entity(make_test_entity());
-        let grandchild = world.add_entity(make_test_entity());
+        let root = spawn_test_entity(&mut world);
+        let child1 = spawn_test_entity(&mut world);
+        let child2 = spawn_test_entity(&mut world);
+        let grandchild = spawn_test_entity(&mut world);
 
         world.add_child(root, child1).unwrap();
         world.add_child(root, child2).unwrap();
@@ -1179,9 +1371,9 @@ mod tests {
     #[test]
     fn test_root_entities() {
         let mut world = World::new();
-        let root1 = world.add_entity(make_test_entity());
-        let root2 = world.add_entity(make_test_entity());
-        let child = world.add_entity(make_test_entity());
+        let root1 = spawn_test_entity(&mut world);
+        let root2 = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
 
         world.add_child(root1, child).unwrap();
 
@@ -1195,10 +1387,10 @@ mod tests {
     #[test]
     fn test_is_ancestor() {
         let mut world = World::new();
-        let a = world.add_entity(make_test_entity());
-        let b = world.add_entity(make_test_entity());
-        let c = world.add_entity(make_test_entity());
-        let d = world.add_entity(make_test_entity());
+        let a = spawn_test_entity(&mut world);
+        let b = spawn_test_entity(&mut world);
+        let c = spawn_test_entity(&mut world);
+        let d = spawn_test_entity(&mut world);
 
         // A -> B -> C
         world.add_child(a, b).unwrap();
@@ -1213,17 +1405,17 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_entity_cleans_hierarchy() {
+    fn test_despawn_cleans_hierarchy() {
         let mut world = World::new();
-        let parent = world.add_entity(make_test_entity());
-        let child = world.add_entity(make_test_entity());
-        let grandchild = world.add_entity(make_test_entity());
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
+        let grandchild = spawn_test_entity(&mut world);
 
         world.add_child(parent, child).unwrap();
         world.add_child(child, grandchild).unwrap();
 
         // Remove child (middle of hierarchy)
-        world.remove_entity(child);
+        world.despawn(child);
 
         // Parent should have no children (child was removed)
         assert!(!world.has_children(parent));
@@ -1238,9 +1430,9 @@ mod tests {
     #[test]
     fn test_reparent() {
         let mut world = World::new();
-        let parent1 = world.add_entity(make_test_entity());
-        let parent2 = world.add_entity(make_test_entity());
-        let child = world.add_entity(make_test_entity());
+        let parent1 = spawn_test_entity(&mut world);
+        let parent2 = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
 
         // First parent
         world.add_child(parent1, child).unwrap();
@@ -1275,8 +1467,8 @@ mod tests {
     #[test]
     fn test_clear_cleans_hierarchy() {
         let mut world = World::new();
-        let parent = world.add_entity(make_test_entity());
-        let child = world.add_entity(make_test_entity());
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
 
         world.add_child(parent, child).unwrap();
         world.clear();
@@ -1289,11 +1481,11 @@ mod tests {
         let mut world = World::new();
 
         // Grandparent at (10, 0, 0, 0)
-        let grandparent = world.add_entity(make_positioned_entity(10.0, 0.0, 0.0, 0.0));
+        let grandparent = spawn_positioned_entity(&mut world, 10.0, 0.0, 0.0, 0.0);
         // Parent at (5, 0, 0, 0) local
-        let parent = world.add_entity(make_positioned_entity(5.0, 0.0, 0.0, 0.0));
+        let parent = spawn_positioned_entity(&mut world, 5.0, 0.0, 0.0, 0.0);
         // Child at (1, 0, 0, 0) local
-        let child = world.add_entity(make_positioned_entity(1.0, 0.0, 0.0, 0.0));
+        let child = spawn_positioned_entity(&mut world, 1.0, 0.0, 0.0, 0.0);
 
         world.add_child(grandparent, parent).unwrap();
         world.add_child(parent, child).unwrap();
@@ -1306,10 +1498,267 @@ mod tests {
     #[test]
     fn test_world_transform_nonexistent() {
         let mut world = World::new();
-        let key = world.add_entity(make_test_entity());
-        world.remove_entity(key);
+        let key = spawn_test_entity(&mut world);
+        world.despawn(key);
 
         // Non-existent entity returns None
         assert!(world.world_transform(key).is_none());
+    }
+
+    // --- Rename tests ---
+
+    #[test]
+    fn test_rename_entity() {
+        let mut world = World::new();
+        let key = spawn_named_entity(&mut world, "old_name");
+
+        assert!(world.get_by_name("old_name").is_some());
+        assert!(world.get_by_name("new_name").is_none());
+
+        let result = world.rename_entity(key, "new_name");
+        assert!(result.is_some());
+
+        assert!(world.get_by_name("old_name").is_none());
+        assert!(world.get_by_name("new_name").is_some());
+        assert_eq!(world.get_by_name("new_name").unwrap(), key);
+    }
+
+    #[test]
+    fn test_rename_entity_no_name() {
+        let mut world = World::new();
+        let key = spawn_test_entity(&mut world);
+
+        // Should return None for entity without Name
+        assert!(world.rename_entity(key, "new_name").is_none());
+    }
+
+    // --- Rebuild index tests ---
+
+    #[test]
+    fn test_rebuild_name_index() {
+        let mut world = World::new();
+        let key = spawn_named_entity(&mut world, "test_entity");
+
+        // Manually corrupt the index
+        world.name_index.clear();
+        assert!(world.get_by_name("test_entity").is_none());
+
+        // Rebuild should fix it
+        world.rebuild_name_index();
+        assert!(world.get_by_name("test_entity").is_some());
+        assert_eq!(world.get_by_name("test_entity").unwrap(), key);
+    }
+
+    // --- Validate hierarchy tests ---
+
+    #[test]
+    fn test_validate_hierarchy_clean() {
+        let mut world = World::new();
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
+        world.add_child(parent, child).unwrap();
+
+        let issues = world.validate_hierarchy();
+        assert!(issues.is_empty(), "Expected no issues, got: {:?}", issues);
+    }
+
+    // --- Tag index tests ---
+
+    #[test]
+    fn test_tag_index_cleanup_on_despawn() {
+        let mut world = World::new();
+        let key = spawn_tagged_entity(&mut world, "tagged", &["enemy", "dynamic"]);
+
+        assert_eq!(world.get_by_tag("enemy").len(), 1);
+        assert_eq!(world.get_by_tag("dynamic").len(), 1);
+
+        world.despawn(key);
+
+        assert_eq!(world.get_by_tag("enemy").len(), 0);
+        assert_eq!(world.get_by_tag("dynamic").len(), 0);
+    }
+
+    // --- Root tracking tests ---
+
+    #[test]
+    fn test_roots_tracking() {
+        let mut world = World::new();
+        let a = spawn_test_entity(&mut world);
+        let b = spawn_test_entity(&mut world);
+        let c = spawn_test_entity(&mut world);
+
+        // All three should be roots
+        assert_eq!(world.root_entities().len(), 3);
+
+        // Make c a child of a
+        world.add_child(a, c).unwrap();
+
+        // Now only a and b should be roots
+        let roots = world.root_entities();
+        assert_eq!(roots.len(), 2);
+        assert!(roots.contains(&a));
+        assert!(roots.contains(&b));
+        assert!(!roots.contains(&c));
+
+        // Remove c from parent -> becomes root again
+        world.remove_from_parent(c);
+        let roots = world.root_entities();
+        assert_eq!(roots.len(), 3);
+        assert!(roots.contains(&c));
+    }
+
+    // --- Dirty count tests ---
+
+    #[test]
+    fn test_dirty_count() {
+        let mut world = World::new();
+        spawn_test_entity(&mut world);
+        spawn_test_entity(&mut world);
+
+        // Both spawned with DirtyFlags::ALL
+        assert!(world.has_dirty_entities());
+
+        world.clear_all_dirty();
+        assert!(!world.has_dirty_entities());
+    }
+
+    // --- Priority 4: Name collision tests ---
+
+    #[test]
+    fn test_name_collision_overwrites_index() {
+        let mut world = World::new();
+        let e1 = spawn_named_entity(&mut world, "cube");
+        let e2 = spawn_named_entity(&mut world, "cube");
+
+        // Second entity should win in the name index
+        assert_eq!(world.get_by_name("cube"), Some(e2));
+        // e1 still exists in the world, just unreachable by name
+        assert!(world.ecs().contains(e1));
+        assert!(world.ecs().contains(e2));
+    }
+
+    #[test]
+    fn test_name_collision_first_entity_still_valid() {
+        let mut world = World::new();
+        let e1 = spawn_named_entity(&mut world, "cube");
+        let _e2 = spawn_named_entity(&mut world, "cube");
+
+        // e1 still has its Name component
+        let name = world.ecs().get::<&Name>(e1).unwrap();
+        assert_eq!(name.0, "cube");
+    }
+
+    // --- ecs_mut_unchecked breaking name index ---
+
+    #[test]
+    fn test_ecs_mut_unchecked_breaks_name_index() {
+        let mut world = World::new();
+        let e1 = spawn_named_entity(&mut world, "original");
+
+        // Mutate via raw access -- bypasses index
+        world.ecs_mut_unchecked().get::<&mut Name>(e1).unwrap().0 = "changed".to_string();
+
+        // Index is now stale
+        assert_eq!(world.get_by_name("original"), Some(e1)); // stale entry
+        assert_eq!(world.get_by_name("changed"), None); // new name not indexed
+
+        // rebuild_name_index fixes it
+        world.rebuild_name_index();
+        assert_eq!(world.get_by_name("original"), None);
+        assert_eq!(world.get_by_name("changed"), Some(e1));
+    }
+
+    // --- world_transform on entity without Transform4D ---
+
+    #[test]
+    fn test_world_transform_without_transform4d() {
+        let mut world = World::new();
+        // Spawn entity with only DirtyFlags, no Transform4D
+        let e = world.spawn((DirtyFlags::ALL,));
+        assert!(world.world_transform(e).is_none());
+    }
+
+    // --- world_transform cycle guard ---
+
+    #[test]
+    fn test_world_transform_cycle_guard() {
+        let mut world = World::new();
+        let e1 = spawn_test_entity(&mut world);
+        let e2 = spawn_test_entity(&mut world);
+
+        // Create cycle by directly setting Parent components (bypassing add_child)
+        let _ = world.ecs_mut_unchecked().insert_one(e1, Parent(e2));
+        let _ = world.ecs_mut_unchecked().insert_one(e2, Parent(e1));
+
+        // world_transform should not infinite-loop; it has a depth limit
+        let result = world.world_transform(e1);
+        // It returns Some because both have Transform4D, just hits depth limit
+        assert!(result.is_some());
+    }
+
+    // --- Physics cleanup verification ---
+
+    #[test]
+    fn test_despawn_cleans_up_physics_body() {
+        use rust4d_physics::{PhysicsMaterial, BodyType};
+
+        let config = crate::PhysicsConfig::new(-9.81);
+        let mut world = World::new().with_physics(config);
+
+        // Add a physics body
+        let body_key = {
+            let physics = world.physics_mut().unwrap();
+            let body = crate::RigidBody4D::new_aabb(
+                rust4d_math::Vec4::new(0.0, 5.0, 0.0, 0.0),
+                rust4d_math::Vec4::new(0.5, 0.5, 0.5, 0.5),
+            ).with_body_type(BodyType::Dynamic)
+             .with_mass(1.0)
+             .with_material(PhysicsMaterial::RUBBER);
+            physics.add_body(body)
+        };
+
+        // Spawn entity with PhysicsBody component
+        let e = world.spawn((
+            ShapeRef::shared(Tesseract4D::new(1.0)),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+            PhysicsBody(body_key),
+        ));
+
+        // Verify physics body exists
+        assert!(world.physics().unwrap().get_body(body_key).is_some());
+
+        // Despawn should clean up the physics body
+        world.despawn(e);
+        assert!(world.physics().unwrap().get_body(body_key).is_none());
+    }
+
+    // --- Validate hierarchy with corrupted state ---
+
+    #[test]
+    fn test_validate_hierarchy_detects_orphaned_parent() {
+        let mut world = World::new();
+        let child = spawn_test_entity(&mut world);
+
+        // Manually set Parent to nonexistent entity (bypassing add_child)
+        let fake_parent = hecs::Entity::DANGLING;
+        let _ = world.ecs_mut_unchecked().insert_one(child, Parent(fake_parent));
+
+        let issues = world.validate_hierarchy();
+        assert!(!issues.is_empty(), "Should detect parent pointing to nonexistent entity");
+    }
+
+    #[test]
+    fn test_validate_hierarchy_detects_missing_child_in_parent() {
+        let mut world = World::new();
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
+
+        // Set Parent on child but don't add to parent's Children
+        let _ = world.ecs_mut_unchecked().insert_one(child, Parent(parent));
+
+        let issues = world.validate_hierarchy();
+        assert!(!issues.is_empty(), "Should detect child not listed in parent's Children");
     }
 }

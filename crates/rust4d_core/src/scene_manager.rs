@@ -355,12 +355,17 @@ impl SceneManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Entity, ShapeRef};
+    use crate::{ShapeRef, Material, DirtyFlags, Transform4D, Name};
     use rust4d_math::Tesseract4D;
 
-    fn make_test_entity() -> Entity {
+    fn spawn_test_entity(world: &mut World) -> hecs::Entity {
         let tesseract = Tesseract4D::new(2.0);
-        Entity::new(ShapeRef::shared(tesseract))
+        world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+        ))
     }
 
     #[test]
@@ -500,7 +505,14 @@ mod tests {
 
         // Create scene with an entity
         let mut scene = ActiveScene::new("Test");
-        scene.world.add_entity(make_test_entity().with_name("cube"));
+        let tesseract = Tesseract4D::new(2.0);
+        scene.world.spawn((
+            ShapeRef::shared(tesseract),
+            Transform4D::identity(),
+            Material::default(),
+            DirtyFlags::ALL,
+            Name("cube".to_string()),
+        ));
         manager.register_active_scene("test", scene);
         manager.push_scene("test").unwrap();
 
@@ -526,7 +538,7 @@ mod tests {
         {
             let world = manager.active_world_mut();
             assert!(world.is_some());
-            world.unwrap().add_entity(make_test_entity());
+            spawn_test_entity(world.unwrap());
         }
 
         // Verify entity was added

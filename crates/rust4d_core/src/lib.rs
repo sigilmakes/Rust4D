@@ -25,7 +25,7 @@ mod scene_loader;
 mod scene_validator;
 
 pub use transform::Transform4D;
-pub use entity::{Material, Entity, ShapeRef, DirtyFlags, EntityTemplate};
+pub use entity::{Material, ShapeRef, DirtyFlags, EntityTemplate};
 pub use world::{World, HierarchyError};
 pub use components::{Name, Tags, PhysicsBody, Parent, Children};
 pub use shapes::ShapeTemplate;
@@ -36,6 +36,9 @@ pub use asset_cache::{AssetId, AssetHandle, Asset, AssetCache};
 pub use scene_transition::{SceneTransition, TransitionEffect, SlideDirection};
 pub use scene_loader::{SceneLoader, LoadResult};
 pub use scene_validator::{SceneValidator, ValidationError};
+
+/// Type alias for entity handles (hecs::Entity)
+pub type EntityId = hecs::Entity;
 
 // Re-export commonly used types from rust4d_math for convenience
 pub use rust4d_math::{Vec4, Rotor4, RotationPlane, ConvexShape4D, Tetrahedron};
