@@ -19,7 +19,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use rust4d_core::{Entity, Material, ShapeRef, Tesseract4D, World};
+use rust4d_core::{Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World};
 use rust4d_render::{
     camera4d::Camera4D,
     context::RenderContext,
@@ -46,11 +46,12 @@ impl App {
 
         // Create a tesseract (4D hypercube) with size 2.0
         let tesseract = Tesseract4D::new(2.0);
-        let entity = Entity::with_material(
+        world.spawn((
             ShapeRef::shared(tesseract),
+            Transform4D::identity(),
             Material::from_rgb(0.8, 0.4, 0.2), // Orange color
-        );
-        world.add_entity(entity);
+            DirtyFlags::ALL,
+        ));
 
         // Build GPU geometry from the world
         let geometry = RenderableGeometry::from_world(&world);

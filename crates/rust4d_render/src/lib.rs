@@ -22,7 +22,7 @@ pub mod pipeline;
 pub mod renderable;
 
 // Re-export core types for convenience
-pub use rust4d_core::{World, Entity, Transform4D, Material, ShapeRef, DirtyFlags, Tags};
+pub use rust4d_core::{World, Transform4D, Material, ShapeRef, DirtyFlags, Tags};
 pub use rust4d_core::{ConvexShape4D, Tetrahedron, Tesseract4D, Hyperplane4D};
 pub use rust4d_core::{Vec4, Rotor4, RotationPlane};
 

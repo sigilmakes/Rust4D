@@ -34,7 +34,7 @@ use winit::{
 };
 
 use rust4d_core::{
-    Entity, Material, ShapeRef, Tesseract4D, Transform4D, World, Tags,
+    Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World, Tags, Name,
     Hyperplane4D,
 };
 use rust4d_render::{
@@ -67,11 +67,14 @@ impl App {
         // Add floor at Y = -2 for spatial reference (shape at y=0 local, positioned by transform)
         let floor_shape = Hyperplane4D::new(20.0, 12, 2.0, 0.001);
         let floor_transform = Transform4D::from_position(Vec4::new(0.0, -2.0, 0.0, 0.0));
-        world.add_entity(
-            Entity::with_transform(ShapeRef::shared(floor_shape), floor_transform, Material::GRAY)
-                .with_name("floor")
-                .with_tag("static"),
-        );
+        world.spawn((
+            ShapeRef::shared(floor_shape),
+            floor_transform,
+            Material::GRAY,
+            DirtyFlags::ALL,
+            Name::new("floor"),
+            Tags::new().with_tag("static"),
+        ));
 
         // Create tesseracts at various 4D positions to explore
         // Each one at a different location in 4D space
@@ -91,11 +94,14 @@ impl App {
         for (position, material, name) in tesseracts {
             let tesseract = Tesseract4D::new(1.5);
             let transform = Transform4D::from_position(position);
-            world.add_entity(
-                Entity::with_transform(ShapeRef::shared(tesseract), transform, material)
-                    .with_name(name)
-                    .with_tag("dynamic"),
-            );
+            world.spawn((
+                ShapeRef::shared(tesseract),
+                transform,
+                material,
+                DirtyFlags::ALL,
+                Name::new(name),
+                Tags::new().with_tag("dynamic"),
+            ));
         }
 
         let geometry = Self::build_geometry(&world);

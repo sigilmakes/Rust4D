@@ -8,7 +8,7 @@
 
 use rust4d_core::{
     ActiveScene, Scene, World, EntityTemplate, Transform4D, Material, ShapeRef,
-    ShapeTemplate, DirtyFlags, PhysicsBody,
+    ShapeTemplate, DirtyFlags, PhysicsBody, Name,
 };
 use rust4d_physics::{
     PhysicsConfig, PhysicsWorld, RigidBody4D, BodyType, StaticCollider, PhysicsMaterial,
@@ -226,10 +226,14 @@ fn test_entity_transform_syncs_from_physics() {
 
     // Create an entity linked to the physics body
     let tesseract = Tesseract4D::new(2.0);
-    let entity = rust4d_core::Entity::new(ShapeRef::shared(tesseract))
-        .with_name("test")
-        .with_physics_body(body_key);
-    world.add_entity(entity);
+    let entity_handle = world.spawn((
+        ShapeRef::shared(tesseract),
+        Transform4D::identity(),
+        Material::default(),
+        DirtyFlags::ALL,
+        Name::new("test"),
+        PhysicsBody(body_key),
+    ));
 
     // Clear dirty flags
     world.clear_all_dirty();
@@ -238,7 +242,6 @@ fn test_entity_transform_syncs_from_physics() {
     world.update(0.1);
 
     // Entity should have new position
-    let entity_handle = world.get_by_name("test").unwrap();
     let transform = world.ecs().get::<&Transform4D>(entity_handle).unwrap();
     assert!(
         transform.position.y < 10.0,
@@ -471,10 +474,14 @@ fn test_remove_entity_cleans_up_physics_body() {
 
     // Create an entity linked to the physics body
     let tesseract = Tesseract4D::new(2.0);
-    let entity = rust4d_core::Entity::new(ShapeRef::shared(tesseract))
-        .with_name("physics_test")
-        .with_physics_body(body_key);
-    let entity_key = world.add_entity(entity);
+    let entity_key = world.spawn((
+        ShapeRef::shared(tesseract),
+        Transform4D::identity(),
+        Material::default(),
+        DirtyFlags::ALL,
+        Name::new("physics_test"),
+        PhysicsBody(body_key),
+    ));
 
     // Verify body exists in physics world
     assert!(
@@ -487,7 +494,7 @@ fn test_remove_entity_cleans_up_physics_body() {
     );
 
     // Remove the entity
-    let removed = world.remove_entity(entity_key);
+    let removed = world.despawn(entity_key);
     assert!(removed, "Entity should be removed");
 
     // Verify physics body was also removed
@@ -508,12 +515,16 @@ fn test_remove_entity_without_physics_body() {
 
     // Create an entity WITHOUT a physics body
     let tesseract = Tesseract4D::new(2.0);
-    let entity = rust4d_core::Entity::new(ShapeRef::shared(tesseract))
-        .with_name("no_physics");
-    let entity_key = world.add_entity(entity);
+    let entity_key = world.spawn((
+        ShapeRef::shared(tesseract),
+        Transform4D::identity(),
+        Material::default(),
+        DirtyFlags::ALL,
+        Name::new("no_physics"),
+    ));
 
     // Remove the entity - should not panic
-    let removed = world.remove_entity(entity_key);
+    let removed = world.despawn(entity_key);
     assert!(removed, "Entity should be removed");
     // Verify entity is gone
     assert!(!world.contains(entity_key));
@@ -526,11 +537,15 @@ fn test_remove_entity_world_without_physics() {
 
     // Create an entity
     let tesseract = Tesseract4D::new(2.0);
-    let entity = rust4d_core::Entity::new(ShapeRef::shared(tesseract))
-        .with_name("test");
-    let entity_key = world.add_entity(entity);
+    let entity_key = world.spawn((
+        ShapeRef::shared(tesseract),
+        Transform4D::identity(),
+        Material::default(),
+        DirtyFlags::ALL,
+        Name::new("test"),
+    ));
 
     // Remove should work fine
-    let removed = world.remove_entity(entity_key);
+    let removed = world.despawn(entity_key);
     assert!(removed, "Entity should be removed even without physics world");
 }
