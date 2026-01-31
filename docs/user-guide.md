@@ -96,6 +96,7 @@ graph TD
 | `rust4d_math` | 4D vectors, rotors, matrices, shapes |
 | `rust4d_core` | World, entities, transforms, scenes |
 | `rust4d_physics` | Collision detection, rigid bodies |
+| `rust4d_game` | Character controller, events, FSM, scene helpers |
 | `rust4d_render` | GPU pipeline, camera, slicing |
 | `rust4d_input` | Keyboard/mouse handling |
 
@@ -338,7 +339,7 @@ if let Some(physics) = world.physics() {
 
 // Get mutable physics world
 if let Some(physics) = world.physics_mut() {
-    physics.set_player_jump_velocity(10.0);
+    let body_key = physics.add_body(rigid_body);
 }
 ```
 
@@ -663,11 +664,16 @@ if let Some(physics) = world.physics_mut() {
     // Add dynamic bodies
     let body_key = physics.add_body(rigid_body);
 
-    // Player controls
-    physics.set_player_body(player_body_key);
-    physics.apply_player_movement(movement_vec);
-    physics.player_jump();
+    // Generic body operations (use BodyKey from add_body)
+    physics.apply_body_movement(body_key, movement_vec);
+    physics.body_jump(body_key, jump_velocity);
+    let grounded = physics.body_is_grounded(body_key);
+    let position = physics.body_position(body_key);
 }
+
+// For player characters, use CharacterController4D (from rust4d_game)
+// which wraps a BodyKey and provides high-level movement operations.
+// See the Player Physics section below.
 ```
 
 #### Physics Update Cycle
@@ -716,7 +722,7 @@ let static_box = RigidBody4D::new_static_aabb(
 |------|-------------|----------|
 | `Dynamic` | Full physics simulation | Falling objects, projectiles |
 | `Static` | Never moves, infinite mass | Floors, walls, platforms |
-| `Kinematic` | User-controlled velocity, no gravity | Player characters |
+| `Kinematic` | User-controlled velocity (gravity opt-in) | Player characters |
 
 ```rust
 use rust4d_physics::BodyType;
@@ -849,25 +855,22 @@ The physics system automatically handles:
 
 ### Player Physics
 
-Special support for FPS-style player movement:
+Player movement uses `CharacterController4D` from `rust4d_game`, which wraps a generic physics body and provides high-level FPS-style controls:
 
 ```rust
-use rust4d_physics::{RigidBody4D, BodyType, PhysicsMaterial};
+use rust4d_game::{CharacterController4D, CharacterConfig, scene_helpers};
+use rust4d_physics::{PhysicsWorld, BodyType};
 use rust4d_math::Vec4;
 
-// Create player body (kinematic for user control)
-let player = RigidBody4D::new_sphere(
-    Vec4::new(0.0, 1.0, 0.0, 0.0),
-    0.5 // Player radius
-)
-.with_body_type(BodyType::Kinematic);
+// Create player body via scene_helpers (the canonical way)
+let spawn = Vec4::new(0.0, 1.0, 0.0, 0.0);
+let player_key = scene_helpers::create_player_body(&mut physics, spawn, 0.5);
 
-// Register with physics world
-let player_key = physics.add_body(player);
-physics.set_player_body(player_key);
-
-// Configure jump
-physics.set_player_jump_velocity(8.0);
+// Create character controller wrapping the body key
+let controller = CharacterController4D::new(player_key, CharacterConfig {
+    move_speed: 5.0,
+    jump_velocity: 8.0,
+});
 ```
 
 #### Player Movement
@@ -880,16 +883,16 @@ let movement = Vec4::new(
     strafe_speed,  // Z
     w_speed        // W for 4D movement
 );
-physics.apply_player_movement(movement);
+controller.apply_movement(&mut physics, movement);
 
 // Jump (only succeeds if grounded)
-if input.jump_pressed && physics.player_jump() {
-    // Jump succeeded
+if input.jump_pressed {
+    controller.jump(&mut physics);
 }
 
 // Check state
-let grounded = physics.player_is_grounded();
-let position = physics.player_position();
+let grounded = controller.is_grounded(&physics);
+let position = controller.position(&physics);
 ```
 
 ---

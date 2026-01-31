@@ -13,8 +13,6 @@ use serde::{Serialize, Deserialize};
 pub struct PhysicsConfig {
     /// Gravity acceleration (applied to Y-axis, negative = down)
     pub gravity: f32,
-    /// Jump velocity for player
-    pub jump_velocity: f32,
     /// Fixed timestep for physics simulation (default: 1/60s)
     #[serde(default = "PhysicsConfig::default_fixed_dt")]
     pub fixed_dt: f32,
@@ -24,7 +22,6 @@ impl Default for PhysicsConfig {
     fn default() -> Self {
         Self {
             gravity: -20.0,
-            jump_velocity: 8.0,
             fixed_dt: Self::default_fixed_dt(),
         }
     }
@@ -41,15 +38,8 @@ impl PhysicsConfig {
     pub fn new(gravity: f32) -> Self {
         Self {
             gravity,
-            jump_velocity: 8.0,
             fixed_dt: Self::default_fixed_dt(),
         }
-    }
-
-    /// Create a physics config with both gravity and jump velocity
-    pub fn with_jump_velocity(mut self, jump_velocity: f32) -> Self {
-        self.jump_velocity = jump_velocity;
-        self
     }
 
     /// Set the fixed timestep
@@ -67,10 +57,6 @@ pub struct PhysicsWorld {
     static_colliders: Vec<StaticCollider>,
     /// Physics configuration
     pub config: PhysicsConfig,
-    /// The player body key (if a player has been registered)
-    player_body: Option<BodyKey>,
-    /// Jump velocity for the player
-    player_jump_velocity: f32,
     /// Fixed timestep duration
     fixed_dt: f32,
     /// Accumulator for fixed timestep
@@ -85,14 +71,11 @@ impl PhysicsWorld {
 
     /// Create a new physics world with custom configuration
     pub fn with_config(config: PhysicsConfig) -> Self {
-        let jump_velocity = config.jump_velocity;
         let fixed_dt = config.fixed_dt;
         Self {
             bodies: SlotMap::with_key(),
             static_colliders: Vec::new(),
             config,
-            player_body: None,
-            player_jump_velocity: jump_velocity,
             fixed_dt,
             accumulator: 0.0,
         }
@@ -138,68 +121,34 @@ impl PhysicsWorld {
         self.bodies.keys()
     }
 
-    // ====== Player Body Management ======
+    // ====== Generic Body Methods ======
 
-    /// Register a body as the player body
-    ///
-    /// This enables player-specific features like jump and grounded detection.
-    /// The body should typically be kinematic (no gravity, user-controlled velocity).
-    pub fn set_player_body(&mut self, key: BodyKey) {
-        self.player_body = Some(key);
+    /// Check if a specific body is grounded
+    pub fn body_is_grounded(&self, key: BodyKey) -> bool {
+        self.bodies.get(key).map(|b| b.grounded).unwrap_or(false)
     }
 
-    /// Set the jump velocity for the player
-    pub fn set_player_jump_velocity(&mut self, velocity: f32) {
-        self.player_jump_velocity = velocity;
+    /// Get a body's position
+    pub fn body_position(&self, key: BodyKey) -> Option<Vec4> {
+        self.bodies.get(key).map(|b| b.position)
     }
 
-    /// Get the player body key
-    pub fn player_key(&self) -> Option<BodyKey> {
-        self.player_body
-    }
-
-    /// Get an immutable reference to the player body
-    pub fn player(&self) -> Option<&RigidBody4D> {
-        self.player_body.and_then(|key| self.bodies.get(key))
-    }
-
-    /// Get a mutable reference to the player body
-    pub fn player_mut(&mut self) -> Option<&mut RigidBody4D> {
-        self.player_body.and_then(|key| self.bodies.get_mut(key))
-    }
-
-    /// Get the player's current position
-    pub fn player_position(&self) -> Option<Vec4> {
-        self.player().map(|body| body.position)
-    }
-
-    /// Check if the player is currently grounded
-    pub fn player_is_grounded(&self) -> bool {
-        self.player().map(|body| body.grounded).unwrap_or(false)
-    }
-
-    /// Apply horizontal movement to the player (XZ plane + W for 4D)
-    ///
-    /// This sets the player's velocity on the XZ and W axes.
-    /// The Y component is controlled by gravity and jumping.
-    pub fn apply_player_movement(&mut self, movement: Vec4) {
-        if let Some(body) = self.player_mut() {
-            // Only set horizontal velocity - preserve Y for gravity/jumping
+    /// Apply horizontal movement to a body (sets XZW velocity, preserves Y)
+    pub fn apply_body_movement(&mut self, key: BodyKey, movement: Vec4) {
+        if let Some(body) = self.bodies.get_mut(key) {
             body.velocity.x = movement.x;
             body.velocity.z = movement.z;
             body.velocity.w = movement.w;
         }
     }
 
-    /// Attempt to make the player jump
+    /// Attempt to make a body jump (set Y velocity if grounded)
     ///
-    /// Only succeeds if the player is grounded. Sets vertical velocity
-    /// to the configured jump velocity.
-    pub fn player_jump(&mut self) -> bool {
-        let jump_vel = self.player_jump_velocity;
-        if let Some(body) = self.player_mut() {
+    /// Returns true if jump was successful.
+    pub fn body_jump(&mut self, key: BodyKey, jump_velocity: f32) -> bool {
+        if let Some(body) = self.bodies.get_mut(key) {
             if body.grounded {
-                body.velocity.y = jump_vel;
+                body.velocity.y = jump_velocity;
                 body.grounded = false;
                 return true;
             }
@@ -237,24 +186,21 @@ impl PhysicsWorld {
     /// 3. Static collider collision detection and resolution
     /// 4. Body-body collision detection and resolution
     pub fn step(&mut self, dt: f32) {
-        // Reset grounded state for player before collision detection
-        if let Some(key) = self.player_body {
-            if let Some(body) = self.bodies.get_mut(key) {
+        // Reset grounded state for all non-static bodies before collision detection
+        for (_, body) in &mut self.bodies {
+            if !body.is_static() {
                 body.grounded = false;
             }
         }
 
         // Phase 1: Apply gravity and integrate velocity
-        for (key, body) in &mut self.bodies {
+        for (_key, body) in &mut self.bodies {
             if body.is_static() {
                 continue;
             }
 
-            // Apply gravity to:
-            // - Dynamic bodies (normal physics objects)
-            // - The player body (kinematic but needs gravity for jumping/falling)
-            let is_player = self.player_body == Some(key);
-            if body.affected_by_gravity() || is_player {
+            // Apply gravity to any body with gravity enabled
+            if body.gravity_enabled {
                 body.velocity.y += self.config.gravity * dt;
             }
 
@@ -329,13 +275,10 @@ impl PhysicsWorld {
         // Threshold for considering a surface as "ground" (normal pointing mostly up)
         const GROUND_NORMAL_THRESHOLD: f32 = 0.7;
 
-        for (key, body) in &mut self.bodies {
+        for (_key, body) in &mut self.bodies {
             if body.is_static() {
                 continue;
             }
-
-            // Check if this is the player body - used for edge falling detection
-            let is_player = self.player_body == Some(key);
 
             for static_col in &self.static_colliders {
                 // Check if collision layers allow this interaction
@@ -343,10 +286,10 @@ impl PhysicsWorld {
                     continue;
                 }
 
-                // Edge falling detection: if the player has walked off a bounded floor
-                // (their XZW position is outside the floor's bounds), skip collision
+                // Edge falling detection: if a kinematic body has walked off a bounded
+                // floor (their XZW position is outside the floor's bounds), skip collision
                 // with that floor's edges. This ensures clean falling into the void.
-                if is_player {
+                if body.is_kinematic() {
                     if let Collider::AABB(_) = &static_col.collider {
                         if !static_col.is_position_over(body.position) {
                             continue;
@@ -919,56 +862,36 @@ mod tests {
             "Ball should be between floor and ceiling, got y={}", ball.position.y);
     }
 
-    // ====== Player Body Tests ======
+    // ====== Generic Body Method Tests ======
 
     #[test]
-    fn test_player_body_registration() {
-        let mut world = PhysicsWorld::new();
-
-        // Create player body (kinematic - no gravity)
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 1.0, 0.0, 0.0), 0.5)
-            .with_body_type(crate::body::BodyType::Kinematic);
-        let player_key = world.add_body(player);
-
-        // Register as player
-        world.set_player_body(player_key);
-
-        // Check player body access
-        assert_eq!(world.player_key(), Some(player_key));
-        assert!(world.player().is_some());
-        assert!(world.player_mut().is_some());
-    }
-
-    #[test]
-    fn test_player_position() {
+    fn test_body_position() {
         let mut world = PhysicsWorld::new();
 
         let start_pos = Vec4::new(5.0, 2.0, 3.0, 1.0);
-        let player = RigidBody4D::new_sphere(start_pos, 0.5)
+        let body = RigidBody4D::new_sphere(start_pos, 0.5)
             .with_body_type(crate::body::BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        let key = world.add_body(body);
 
-        assert_eq!(world.player_position(), Some(start_pos));
+        assert_eq!(world.body_position(key), Some(start_pos));
     }
 
     #[test]
-    fn test_player_movement() {
+    fn test_body_movement() {
         let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0)); // No gravity
 
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 1.0, 0.0, 0.0), 0.5)
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 1.0, 0.0, 0.0), 0.5)
             .with_body_type(crate::body::BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        let key = world.add_body(body);
 
         // Apply horizontal movement
-        world.apply_player_movement(Vec4::new(10.0, 0.0, 5.0, 2.0));
+        world.apply_body_movement(key, Vec4::new(10.0, 0.0, 5.0, 2.0));
 
         // Step physics
         world.step(0.1);
 
-        // Check player moved in XZW but Y was preserved
-        let pos = world.player_position().unwrap();
+        // Check body moved in XZW but Y was preserved
+        let pos = world.body_position(key).unwrap();
         assert!((pos.x - 1.0).abs() < 0.01); // 10 * 0.1 = 1.0
         assert!((pos.y - 1.0).abs() < 0.01); // Y unchanged
         assert!((pos.z - 0.5).abs() < 0.01); // 5 * 0.1 = 0.5
@@ -976,88 +899,85 @@ mod tests {
     }
 
     #[test]
-    fn test_player_grounded_detection() {
+    fn test_body_grounded_detection() {
         let mut world = world_with_floor(0.0, 0.0, PhysicsMaterial::CONCRETE);
 
-        // Player just above floor (radius 0.5, position at y=0.5 means touching floor)
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 0.4, 0.0, 0.0), 0.5)
-            .with_body_type(crate::body::BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        // Body just above floor (radius 0.5, position at y=0.4 means penetrating)
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.4, 0.0, 0.0), 0.5)
+            .with_body_type(crate::body::BodyType::Kinematic)
+            .with_gravity(true); // Enable gravity for kinematic body
+        let key = world.add_body(body);
 
-        // Initially not grounded
-        assert!(!world.player_is_grounded());
+        // Initially not grounded (grounded resets each step)
+        assert!(!world.body_is_grounded(key));
 
         // Step to detect floor collision
         world.step(0.016);
 
         // Should be grounded after collision detection
-        assert!(world.player_is_grounded());
+        assert!(world.body_is_grounded(key));
     }
 
     #[test]
-    fn test_player_jump() {
+    fn test_body_jump() {
         let mut world = world_with_floor(0.0, 0.0, PhysicsMaterial::CONCRETE);
 
-        // Player on floor
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 0.4, 0.0, 0.0), 0.5)
-            .with_body_type(crate::body::BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        // Body on floor with gravity enabled
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.4, 0.0, 0.0), 0.5)
+            .with_body_type(crate::body::BodyType::Kinematic)
+            .with_gravity(true);
+        let key = world.add_body(body);
 
         // Step to get grounded
         world.step(0.016);
-        assert!(world.player_is_grounded());
+        assert!(world.body_is_grounded(key));
 
-        // Jump
-        let jumped = world.player_jump();
+        // Jump with custom velocity
+        let jumped = world.body_jump(key, 8.0);
         assert!(jumped);
-        assert!(!world.player_is_grounded());
+        assert!(!world.body_is_grounded(key));
 
-        // Check velocity set (default jump_velocity is 8.0)
-        let vel = world.player().unwrap().velocity;
+        // Check velocity set
+        let vel = world.get_body(key).unwrap().velocity;
         assert_eq!(vel.y, 8.0);
     }
 
     #[test]
-    fn test_player_cannot_jump_while_airborne() {
+    fn test_body_cannot_jump_while_airborne() {
         let mut world = PhysicsWorld::new();
 
-        // Player in the air
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 10.0, 0.0, 0.0), 0.5)
+        // Body in the air
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 10.0, 0.0, 0.0), 0.5)
             .with_body_type(crate::body::BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        let key = world.add_body(body);
 
         // Not grounded initially
-        assert!(!world.player_is_grounded());
+        assert!(!world.body_is_grounded(key));
 
         // Jump should fail
-        let jumped = world.player_jump();
+        let jumped = world.body_jump(key, 8.0);
         assert!(!jumped);
 
         // Velocity should still be zero
-        let vel = world.player().unwrap().velocity;
+        let vel = world.get_body(key).unwrap().velocity;
         assert_eq!(vel.y, 0.0);
     }
 
     #[test]
-    fn test_player_jump_velocity_config() {
+    fn test_body_jump_custom_velocity() {
         let mut world = PhysicsWorld::new();
-        world.set_player_jump_velocity(15.0);
 
-        // Player that's grounded
-        let mut player = RigidBody4D::new_sphere(Vec4::new(0.0, 0.5, 0.0, 0.0), 0.5)
+        // Body that's grounded
+        let mut body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.5, 0.0, 0.0), 0.5)
             .with_body_type(crate::body::BodyType::Kinematic);
-        player.grounded = true; // Manually set grounded for test
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        body.grounded = true; // Manually set grounded for test
+        let key = world.add_body(body);
 
-        // Jump
-        world.player_jump();
+        // Jump with custom velocity
+        world.body_jump(key, 15.0);
 
         // Check custom velocity used
-        let vel = world.player().unwrap().velocity;
+        let vel = world.get_body(key).unwrap().velocity;
         assert_eq!(vel.y, 15.0);
     }
 
@@ -1285,7 +1205,7 @@ mod tests {
     // ====== Edge Falling Tests ======
 
     #[test]
-    fn test_player_falls_when_walking_off_w_edge() {
+    fn test_kinematic_falls_when_walking_off_w_edge() {
         use crate::body::BodyType;
 
         // Create world with bounded floor (W bounds: -2 to +2)
@@ -1298,49 +1218,48 @@ mod tests {
             PhysicsMaterial::CONCRETE,
         ));
 
-        // Player starts on the floor at W=0
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 0.5, 0.0, 0.0), 0.5)
-            .with_body_type(BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        // Kinematic body starts on the floor at W=0 with gravity enabled
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.5, 0.0, 0.0), 0.5)
+            .with_body_type(BodyType::Kinematic)
+            .with_gravity(true);
+        let key = world.add_body(body);
 
-        // Move player past the W edge (W > 2.5 is completely off floor)
+        // Move body past the W edge (W > 2.5 is completely off floor)
         {
-            let body = world.get_body_mut(player_key).unwrap();
+            let body = world.get_body_mut(key).unwrap();
             body.position.w = 3.0;
             body.collider = body.collider.translated(Vec4::new(0.0, 0.0, 0.0, 3.0));
         }
 
-        // Simulate for a short time - player should fall without oscillating
-        let initial_y = world.player_position().unwrap().y;
+        // Simulate for a short time - body should fall without oscillating
+        let initial_y = world.body_position(key).unwrap().y;
         for _ in 0..20 {
             world.step(0.016);
         }
 
-        let final_pos = world.player_position().unwrap();
+        let final_pos = world.body_position(key).unwrap();
 
-        // Player should have fallen significantly (not hovering at edge)
-        // With gravity=-20, after 0.32s, delta_y ≈ 0.5*20*0.32^2 ≈ 1.0 units
+        // Body should have fallen significantly (not hovering at edge)
         assert!(
             final_pos.y < initial_y - 0.5,
-            "Player should fall when off W edge. Started at y={}, ended at y={}",
+            "Body should fall when off W edge. Started at y={}, ended at y={}",
             initial_y,
             final_pos.y
         );
 
-        // Player should not be grounded
+        // Body should not be grounded
         assert!(
-            !world.player_is_grounded(),
-            "Player off floor should not be grounded"
+            !world.body_is_grounded(key),
+            "Body off floor should not be grounded"
         );
     }
 
     #[test]
-    fn test_player_no_oscillation_at_w_edge() {
+    fn test_kinematic_no_oscillation_at_w_edge() {
         use crate::body::BodyType;
 
         // This test verifies the edge oscillation bug is fixed:
-        // When player is at the W edge boundary, they should either:
+        // When a kinematic body is at the W edge boundary, they should either:
         // 1. Fall cleanly through (if off the floor)
         // 2. Land on the floor (if they return to being over the floor)
         // They should NOT oscillate at the edge.
@@ -1354,12 +1273,12 @@ mod tests {
             PhysicsMaterial::CONCRETE,
         ));
 
-        // Player starts just at the W edge, trying to oscillate
+        // Body starts just at the W edge, trying to oscillate
         // Position W=2.3 is just outside the floor bounds (W: -2 to +2)
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 0.5, 0.0, 2.3), 0.5)
-            .with_body_type(BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.5, 0.0, 2.3), 0.5)
+            .with_body_type(BodyType::Kinematic)
+            .with_gravity(true);
+        let key = world.add_body(body);
 
         // Track Y positions over time to verify no oscillation
         let mut y_positions = Vec::new();
@@ -1370,37 +1289,32 @@ mod tests {
 
             // Alternate W velocity to simulate oscillation attempt
             let w_vel = if i % 4 < 2 { -3.0 } else { 3.0 };
-            world.apply_player_movement(Vec4::new(0.0, 0.0, 0.0, w_vel));
+            world.apply_body_movement(key, Vec4::new(0.0, 0.0, 0.0, w_vel));
 
-            let pos = world.player_position().unwrap();
+            let pos = world.body_position(key).unwrap();
             y_positions.push(pos.y);
             last_w = pos.w;
         }
 
-        // Key assertion: player should not hover at original Y height
-        // If oscillating, Y would stay near 0.5 due to edge collisions pushing back
+        // Key assertion: body should not hover at original Y height
         let final_y = y_positions.last().unwrap();
 
-        // Either the player fell significantly (if they stayed off the floor)
-        // or they landed on the floor (if they returned to being over it)
-        // But they should NOT be hovering at the original height while moving
         let is_on_floor = *final_y > 0.4 && *final_y < 0.6 && last_w.abs() < 2.0;
         let has_fallen = *final_y < 0.0;
 
         assert!(
             is_on_floor || has_fallen,
-            "Player should either land on floor or fall, not oscillate. Final y={}, w={}",
+            "Body should either land on floor or fall, not oscillate. Final y={}, w={}",
             final_y,
             last_w
         );
     }
 
     #[test]
-    fn test_player_falls_into_void_when_far_off_edge() {
+    fn test_kinematic_falls_into_void_when_far_off_edge() {
         use crate::body::BodyType;
 
-        // When player is far off the edge and can't return before falling,
-        // they should fall into the void.
+        // When a kinematic body is far off the edge, it should fall into the void.
 
         let mut world = PhysicsWorld::with_config(PhysicsConfig::new(-20.0));
         world.add_static_collider(StaticCollider::floor_bounded(
@@ -1411,33 +1325,31 @@ mod tests {
             PhysicsMaterial::CONCRETE,
         ));
 
-        // Player starts far off the W edge
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 0.5, 0.0, 5.0), 0.5)
+        // Body starts far off the W edge with gravity enabled
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.5, 0.0, 5.0), 0.5)
             .with_body_type(BodyType::Kinematic)
+            .with_gravity(true)
             .with_velocity(Vec4::new(0.0, 0.0, 0.0, -1.0)); // Slowly moving back
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        let key = world.add_body(body);
 
-        // Simulate for longer - player should fall into void
+        // Simulate for longer - body should fall into void
         for _ in 0..60 {
             world.step(0.016);
-            world.apply_player_movement(Vec4::new(0.0, 0.0, 0.0, -1.0));
+            world.apply_body_movement(key, Vec4::new(0.0, 0.0, 0.0, -1.0));
         }
 
-        let final_pos = world.player_position().unwrap();
+        let final_pos = world.body_position(key).unwrap();
 
-        // Player should have fallen past the floor's bottom (y=-5)
-        // After 0.96s with gravity=-20: distance = 0.5*20*0.96^2 ≈ 9.2 units
-        // Starting at y=0.5, final y ≈ 0.5 - 9.2 = -8.7
+        // Body should have fallen past the floor's bottom (y=-5)
         assert!(
             final_pos.y < -5.0,
-            "Player should fall into void when far off edge. Final y={}",
+            "Body should fall into void when far off edge. Final y={}",
             final_pos.y
         );
     }
 
     #[test]
-    fn test_player_jumping_over_floor_still_works() {
+    fn test_kinematic_jumping_over_floor_still_works() {
         use crate::body::BodyType;
 
         // Make sure the edge falling fix doesn't break normal jumping
@@ -1445,49 +1357,49 @@ mod tests {
         world.add_static_collider(StaticCollider::floor_bounded(
             0.0,   // floor at y=0
             10.0,  // half_size_xz
-            10.0,  // half_size_w (large, player stays over floor)
+            10.0,  // half_size_w (large, body stays over floor)
             5.0,   // thickness
             PhysicsMaterial::CONCRETE,
         ));
 
-        // Player on floor
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 0.4, 0.0, 0.0), 0.5)
-            .with_body_type(BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        // Kinematic body on floor with gravity enabled
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.4, 0.0, 0.0), 0.5)
+            .with_body_type(BodyType::Kinematic)
+            .with_gravity(true);
+        let key = world.add_body(body);
 
         // Step to get grounded
         world.step(0.016);
-        assert!(world.player_is_grounded(), "Player should start grounded");
+        assert!(world.body_is_grounded(key), "Body should start grounded");
 
         // Jump
-        world.player_jump();
-        assert!(!world.player_is_grounded(), "Player should be airborne after jump");
+        world.body_jump(key, 8.0);
+        assert!(!world.body_is_grounded(key), "Body should be airborne after jump");
 
-        // Let physics run - player should go up then land back on floor
+        // Let physics run - body should go up then land back on floor
         for _ in 0..100 {
             world.step(0.016);
         }
 
         // Should land and be grounded again
         assert!(
-            world.player_is_grounded(),
-            "Player should land back on floor after jump"
+            world.body_is_grounded(key),
+            "Body should land back on floor after jump"
         );
 
-        let final_y = world.player_position().unwrap().y;
+        let final_y = world.body_position(key).unwrap().y;
         assert!(
             final_y > 0.0 && final_y < 1.0,
-            "Player should be on floor surface. Final y={}",
+            "Body should be on floor surface. Final y={}",
             final_y
         );
     }
 
     #[test]
-    fn test_player_on_floor_center_stays_grounded() {
+    fn test_kinematic_on_floor_center_stays_grounded() {
         use crate::body::BodyType;
 
-        // Player in center of floor should work normally
+        // Kinematic body in center of floor should work normally
         let mut world = PhysicsWorld::with_config(PhysicsConfig::new(-20.0));
         world.add_static_collider(StaticCollider::floor_bounded(
             0.0,   // floor at y=0
@@ -1497,24 +1409,24 @@ mod tests {
             PhysicsMaterial::CONCRETE,
         ));
 
-        // Player above floor center
-        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 1.0, 0.0, 0.0), 0.5)
-            .with_body_type(BodyType::Kinematic);
-        let player_key = world.add_body(player);
-        world.set_player_body(player_key);
+        // Kinematic body above floor center with gravity enabled
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 1.0, 0.0, 0.0), 0.5)
+            .with_body_type(BodyType::Kinematic)
+            .with_gravity(true);
+        let key = world.add_body(body);
 
-        // Simulate until player lands
+        // Simulate until body lands
         for _ in 0..50 {
             world.step(0.016);
         }
 
-        // Player should be grounded on floor
-        assert!(world.player_is_grounded(), "Player should be grounded on floor center");
+        // Body should be grounded on floor
+        assert!(world.body_is_grounded(key), "Body should be grounded on floor center");
 
-        let final_y = world.player_position().unwrap().y;
+        let final_y = world.body_position(key).unwrap().y;
         assert!(
             (final_y - 0.5).abs() < 0.1,
-            "Player should rest at y=0.5 (radius above floor). Final y={}",
+            "Body should rest at y=0.5 (radius above floor). Final y={}",
             final_y
         );
     }

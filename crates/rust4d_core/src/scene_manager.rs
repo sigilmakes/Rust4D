@@ -44,8 +44,6 @@ pub struct SceneManager {
     active_stack: Vec<String>,
     /// Default physics config for new scenes
     default_physics: Option<PhysicsConfig>,
-    /// Player collision radius for scene instantiation
-    player_radius: f32,
     /// Active transition between scenes
     transition: Option<SceneTransition>,
     /// Overlay scene names (rendered on top of active scene)
@@ -68,7 +66,6 @@ impl SceneManager {
             scenes: HashMap::new(),
             active_stack: Vec::new(),
             default_physics: None,
-            player_radius: 0.5,
             transition: None,
             overlay_stack: Vec::new(),
             loader: SceneLoader::new(),
@@ -78,12 +75,6 @@ impl SceneManager {
     /// Set the default physics config for new scenes
     pub fn with_physics(mut self, config: PhysicsConfig) -> Self {
         self.default_physics = Some(config);
-        self
-    }
-
-    /// Set the player collision radius for scene instantiation
-    pub fn with_player_radius(mut self, radius: f32) -> Self {
-        self.player_radius = radius;
         self
     }
 
@@ -126,7 +117,7 @@ impl SceneManager {
         let template = self.templates.get(template_name)
             .ok_or_else(|| SceneError::NotLoaded(template_name.to_string()))?;
 
-        let active = ActiveScene::from_template(template, self.default_physics.clone(), self.player_radius);
+        let active = ActiveScene::from_template(template, self.default_physics.clone());
         self.scenes.insert(template_name.to_string(), active);
         Ok(())
     }

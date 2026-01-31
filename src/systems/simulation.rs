@@ -8,6 +8,7 @@
 
 use std::time::Instant;
 use rust4d_core::SceneManager;
+use rust4d_game::CharacterController4D;
 use rust4d_input::CameraController;
 use rust4d_math::Vec4;
 use rust4d_render::camera4d::Camera4D;
@@ -43,6 +44,7 @@ impl SimulationSystem {
     /// * `scene_manager` - Scene manager containing world and physics
     /// * `camera` - 4D camera to sync position to
     /// * `controller` - Input controller for movement/rotation
+    /// * `character` - Character controller for player movement (None if no player body)
     /// * `cursor_captured` - Whether cursor is captured (enables mouse look)
     ///
     /// # Returns
@@ -52,6 +54,7 @@ impl SimulationSystem {
         scene_manager: &mut SceneManager,
         camera: &mut Camera4D,
         controller: &mut CameraController,
+        character: Option<&CharacterController4D>,
         cursor_captured: bool,
     ) -> SimulationResult {
         // 1. Calculate delta time
@@ -87,22 +90,22 @@ impl SimulationSystem {
             move_dir
         };
 
-        // 4. Apply movement to player via physics
-        let move_speed = controller.move_speed;
-        if let Some(physics) = scene_manager
+        // 4. Apply movement to player via character controller
+        // The controller owns move_speed, so we just pass the normalized direction
+        if let (Some(character), Some(physics)) = (character, scene_manager
             .active_world_mut()
-            .and_then(|w| w.physics_mut())
+            .and_then(|w| w.physics_mut()))
         {
-            physics.apply_player_movement(move_dir * move_speed);
+            character.apply_movement(physics, move_dir);
         }
 
-        // 5. Handle jump
+        // 5. Handle jump via character controller
         if controller.consume_jump() {
-            if let Some(physics) = scene_manager
+            if let (Some(character), Some(physics)) = (character, scene_manager
                 .active_world_mut()
-                .and_then(|w| w.physics_mut())
+                .and_then(|w| w.physics_mut()))
             {
-                physics.player_jump();
+                character.jump(physics);
             }
         }
 
@@ -115,25 +118,27 @@ impl SimulationSystem {
             .map(|w| w.has_dirty_entities())
             .unwrap_or(false);
 
-        // 8. Sync camera position to player physics (all 4 dimensions)
-        if let Some(pos) = scene_manager
+        // 8. Sync camera position to player via character controller
+        if let (Some(character), Some(physics)) = (character, scene_manager
             .active_world()
-            .and_then(|w| w.physics())
-            .and_then(|p| p.player_position())
+            .and_then(|w| w.physics()))
         {
-            camera.position = pos;
+            if let Some(pos) = character.position(physics) {
+                camera.position = pos;
+            }
         }
 
         // 9. Apply mouse look for camera rotation
         controller.update(camera, dt, cursor_captured);
 
         // 10. Re-sync position after controller (discard its movement, keep rotation)
-        if let Some(pos) = scene_manager
+        if let (Some(character), Some(physics)) = (character, scene_manager
             .active_world()
-            .and_then(|w| w.physics())
-            .and_then(|p| p.player_position())
+            .and_then(|w| w.physics()))
         {
-            camera.position = pos;
+            if let Some(pos) = character.position(physics) {
+                camera.position = pos;
+            }
         }
 
         SimulationResult { geometry_dirty }

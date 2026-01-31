@@ -167,8 +167,8 @@ impl Default for InputConfig {
 
 /// Physics configuration from TOML
 ///
-/// This wraps the core PhysicsConfig. The `gravity` and `jump_velocity` fields
-/// are passed to the physics engine.
+/// This wraps the core PhysicsConfig. The `gravity` field is passed to the
+/// physics engine. Jump velocity is now per-entity (set by game logic).
 ///
 /// Note: `player_radius` is in `[scene]` section. Floor positions are defined
 /// per-scene in .ron files via Hyperplane entities.
@@ -176,7 +176,8 @@ impl Default for InputConfig {
 pub struct PhysicsConfigToml {
     /// Gravity (negative = downward)
     pub gravity: f32,
-    /// Jump velocity
+    /// Jump velocity (used by game logic, not physics engine)
+    #[serde(default = "PhysicsConfigToml::default_jump_velocity")]
     pub jump_velocity: f32,
 }
 
@@ -190,10 +191,13 @@ impl Default for PhysicsConfigToml {
 }
 
 impl PhysicsConfigToml {
+    fn default_jump_velocity() -> f32 {
+        8.0
+    }
+
     /// Convert to the physics engine's PhysicsConfig
     pub fn to_physics_config(&self) -> PhysicsConfig {
         PhysicsConfig::new(self.gravity)
-            .with_jump_velocity(self.jump_velocity)
     }
 }
 

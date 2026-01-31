@@ -1562,6 +1562,7 @@ dependencies = [
  "log",
  "pollster",
  "rust4d_core",
+ "rust4d_game",
  "rust4d_input",
  "rust4d_math",
  "rust4d_physics",
@@ -1584,6 +1585,16 @@ dependencies = [
  "rust4d_math",
  "rust4d_physics",
  "serde",
+]
+
+[[package]]
+name = "rust4d_game"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "rust4d_core",
+ "rust4d_math",
+ "rust4d_physics",
 ]
 
 [[package]]
