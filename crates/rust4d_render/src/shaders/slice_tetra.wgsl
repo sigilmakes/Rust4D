@@ -261,7 +261,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let signed_vol = dot(e1, cross(e2, e3));
     // XOR determinant sign with case parity to get consistent outward-facing normals
     // case_idx >= 8 means the complement half of the lookup table
-    let should_flip = (signed_vol > 0.0) != (case_idx >= 8u);
+    let should_flip = (signed_vol > 0.0) == (case_idx >= 8u);
 
     // Get edge mask and triangle count
     let edge_mask = TETRA_EDGE_TABLE[case_idx];
