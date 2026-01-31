@@ -253,6 +253,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
+    // Compute signed volume of the tetrahedron in camera space
+    // This determines the handedness (orientation) of the tetrahedron
+    let e1 = pos[1].xyz - pos[0].xyz;
+    let e2 = pos[2].xyz - pos[0].xyz;
+    let e3 = pos[3].xyz - pos[0].xyz;
+    let signed_vol = dot(e1, cross(e2, e3));
+    // XOR determinant sign with case parity to get consistent outward-facing normals
+    // case_idx >= 8 means the complement half of the lookup table
+    let should_flip = (signed_vol > 0.0) != (case_idx >= 8u);
+
     // Get edge mask and triangle count
     let edge_mask = TETRA_EDGE_TABLE[case_idx];
     let tri_count = TETRA_TRI_COUNT[case_idx];
@@ -276,7 +286,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     // Output triangles
     let tri_indices = TETRA_TRI_TABLE[case_idx];
-    let camera_eye = params.camera_eye;
 
     for (var t: u32 = 0u; t < tri_count; t++) {
         let base = t * 3u;
@@ -294,12 +303,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let p2 = vertex_position(tv2);
         var normal = compute_normal(p0, p1, p2);
 
-        // Ensure normals face toward the camera
-        // The normal should point in the same direction as the vector from triangle to camera
-        let tri_center = (p0 + p1 + p2) / 3.0;
-        let to_camera = camera_eye - tri_center;
-        if (dot(normal, to_camera) < 0.0) {
-            // Normal points away from camera, flip to face camera
+        // Use determinant + case parity to determine winding order
+        // This produces consistent outward-facing normals regardless of
+        // camera position or tetrahedron orientation
+        if (should_flip) {
             let tmp = tv1;
             tv1 = tv2;
             tv2 = tmp;
