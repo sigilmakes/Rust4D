@@ -24,7 +24,10 @@ pub enum BodyType {
     Dynamic,
     /// Never moves, used for floors, walls, platforms
     Static,
-    /// User-controlled velocity, no gravity (ideal for player characters)
+    /// User-controlled velocity (gravity opt-in via `gravity_enabled` flag)
+    ///
+    /// By default, kinematic bodies have gravity disabled. Enable gravity with
+    /// `with_gravity(true)` for player characters that need jumping/falling.
     Kinematic,
 }
 
@@ -139,12 +142,12 @@ impl RigidBody4D {
 
     /// Set the body type (Dynamic, Static, or Kinematic)
     ///
-    /// Also sets `gravity_enabled` based on body type:
+    /// Also sets `gravity_enabled` based on body type as a default:
     /// - Dynamic: gravity enabled
     /// - Static/Kinematic: gravity disabled
     ///
     /// To override gravity independently of body type, call
-    /// `with_gravity_enabled()` after this method.
+    /// `with_gravity()` after this method.
     pub fn with_body_type(mut self, body_type: BodyType) -> Self {
         self.body_type = body_type;
         self.gravity_enabled = body_type == BodyType::Dynamic;
@@ -161,17 +164,10 @@ impl RigidBody4D {
         self
     }
 
-    /// Set whether gravity applies to this body (independent of body type)
-    ///
-    /// This is equivalent to `with_gravity()` but with a more explicit name.
-    pub fn with_gravity_enabled(mut self, enabled: bool) -> Self {
-        self.gravity_enabled = enabled;
-        self
-    }
-
     /// Set whether this body is static (legacy API)
     ///
-    /// For new code, prefer `with_body_type()`.
+    /// For new code, prefer `with_body_type(BodyType::Static)`.
+    #[deprecated(note = "Use with_body_type(BodyType::Static) instead")]
     pub fn with_static(mut self, is_static: bool) -> Self {
         if is_static {
             self.body_type = BodyType::Static;
@@ -431,6 +427,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_with_static_disables_gravity() {
         let body = RigidBody4D::new_sphere(Vec4::ZERO, 1.0)
             .with_gravity(true)
