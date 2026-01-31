@@ -4,10 +4,9 @@
 //!
 //! - [`Transform4D`] - Position, rotation, and scale in 4D space
 //! - [`Material`] - Visual properties of an entity
-//! - [`Entity`] - An object in the world with transform, shape, and material
 //! - [`ShapeRef`] - Reference to a shape (shared or owned)
-//! - [`World`] - Container for all entities
-//! - [`EntityKey`] - Generational key to an entity in the world
+//! - [`World`] - ECS-backed container for all entities
+//! - [`Name`], [`Tags`], [`PhysicsBody`] - ECS components
 //! - [`ShapeTemplate`] - Serializable shape template
 //! - [`EntityTemplate`] - Serializable entity template
 //! - [`Scene`] - Loadable/saveable scene containing entities
@@ -15,6 +14,7 @@
 mod transform;
 mod entity;
 mod world;
+mod components;
 mod shapes;
 mod scene;
 mod scene_manager;
@@ -26,7 +26,8 @@ mod scene_validator;
 
 pub use transform::Transform4D;
 pub use entity::{Material, Entity, ShapeRef, DirtyFlags, EntityTemplate};
-pub use world::{World, EntityKey, HierarchyError};
+pub use world::{World, HierarchyError};
+pub use components::{Name, Tags, PhysicsBody, Parent, Children};
 pub use shapes::ShapeTemplate;
 pub use scene::{Scene, SceneLoadError, SceneSaveError, SceneError, ActiveScene};
 pub use scene_manager::SceneManager;
@@ -42,3 +43,6 @@ pub use rust4d_math::{Tesseract4D, Hyperplane4D};
 
 // Re-export physics types for convenient access through rust4d_core
 pub use rust4d_physics::{BodyKey, PhysicsConfig, PhysicsWorld, RigidBody4D, StaticCollider};
+
+// Re-export hecs::Entity for consumers
+pub use hecs;

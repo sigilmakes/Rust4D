@@ -581,8 +581,9 @@ Scene(
         assert_eq!(active.world.physics().unwrap().config.gravity, -15.0);
 
         // Check entity was instantiated
-        let (_, entity) = active.world.get_by_name("cube").unwrap();
-        assert_eq!(entity.material.base_color, [1.0, 0.0, 0.0, 1.0]);
+        let entity_handle = active.world.get_by_name("cube").unwrap();
+        let material = active.world.ecs().get::<&Material>(entity_handle).unwrap();
+        assert_eq!(material.base_color, [1.0, 0.0, 0.0, 1.0]);
     }
 
     #[test]
