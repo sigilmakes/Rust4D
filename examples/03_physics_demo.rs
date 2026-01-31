@@ -21,7 +21,7 @@ use winit::{
 };
 
 use rust4d_core::{
-    Entity, Material, ShapeRef, Tesseract4D, Transform4D, World,
+    Entity, Material, ShapeRef, Tesseract4D, Transform4D, World, Tags,
     PhysicsConfig, RigidBody4D, StaticCollider, Hyperplane4D,
 };
 use rust4d_render::{
@@ -134,11 +134,14 @@ impl App {
             2.0,
         );
 
-        for entity in world.iter() {
-            if entity.has_tag("dynamic") {
-                geometry.add_entity_with_color(entity, &position_gradient_color);
+        for (_entity, (transform, shape, material, tags)) in
+            world.ecs().query::<(&Transform4D, &ShapeRef, &Material, Option<&Tags>)>().iter()
+        {
+            let is_dynamic = tags.map(|t| t.has("dynamic")).unwrap_or(false);
+            if is_dynamic {
+                geometry.add_components_with_color(transform, shape.as_shape(), material, &position_gradient_color);
             } else {
-                geometry.add_entity_with_color(entity, &|v, _m| {
+                geometry.add_components_with_color(transform, shape.as_shape(), material, &|v, _m| {
                     checkerboard.color_for_position(v.x, v.z)
                 });
             }
