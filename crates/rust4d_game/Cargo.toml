@@ -1,0 +1,10 @@
+[package]
+name = "rust4d_game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rust4d_math.workspace = true
+rust4d_physics.workspace = true
+rust4d_core.workspace = true
+log.workspace = true
