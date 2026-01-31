@@ -216,6 +216,8 @@ pub struct ActiveScene {
     pub player_spawn: Option<[f32; 4]>,
     /// The live world with entities and physics
     pub world: World,
+    /// The player's physics body key (if spawned)
+    pub player_body_key: Option<rust4d_physics::BodyKey>,
 }
 
 impl ActiveScene {
@@ -296,21 +298,24 @@ impl ActiveScene {
         }
 
         // Create player body from player_spawn
-        if let (Some(spawn), Some(physics)) = (template.player_spawn, world.physics_mut()) {
+        let player_body_key = if let (Some(spawn), Some(physics)) = (template.player_spawn, world.physics_mut()) {
             let position = Vec4::new(spawn[0], spawn[1], spawn[2], spawn[3]);
             let player_body = RigidBody4D::new_sphere(position, player_radius)
                 .with_body_type(BodyType::Kinematic)
+                .with_gravity(true) // Kinematic player body needs gravity for jumping/falling
                 .with_mass(1.0)
                 .with_material(PhysicsMaterial::WOOD);
 
-            let body_key = physics.add_body(player_body);
-            physics.set_player_body(body_key);
-        }
+            Some(physics.add_body(player_body))
+        } else {
+            None
+        };
 
         Self {
             name: template.name.clone(),
             player_spawn: template.player_spawn,
             world,
+            player_body_key,
         }
     }
 
@@ -320,6 +325,7 @@ impl ActiveScene {
             name: name.into(),
             player_spawn: None,
             world: World::new(),
+            player_body_key: None,
         }
     }
 

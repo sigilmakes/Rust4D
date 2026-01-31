@@ -373,7 +373,7 @@ fn test_load_default_scene_file() {
 
 /// Test that walking off the W edge causes falling (true 4D physics)
 #[test]
-fn test_player_falls_off_w_edge() {
+fn test_kinematic_body_falls_off_w_edge() {
     let mut physics = PhysicsWorld::with_config(PhysicsConfig::new(-20.0));
 
     // Add bounded floor: W extends from -5 to +5
@@ -381,42 +381,42 @@ fn test_player_falls_off_w_edge() {
         -2.0, 10.0, 5.0, 5.0, PhysicsMaterial::CONCRETE,
     ));
 
-    // Add player sphere at center, resting on floor
-    let player = RigidBody4D::new_sphere(Vec4::new(0.0, -1.5, 0.0, 0.0), 0.5)
-        .with_body_type(BodyType::Kinematic);
-    let player_key = physics.add_body(player);
-    physics.set_player_body(player_key);
+    // Add kinematic sphere at center, resting on floor, with gravity enabled
+    let body = RigidBody4D::new_sphere(Vec4::new(0.0, -1.5, 0.0, 0.0), 0.5)
+        .with_body_type(BodyType::Kinematic)
+        .with_gravity(true);
+    let key = physics.add_body(body);
 
     // Step physics to settle
     for _ in 0..10 {
         physics.step(1.0 / 60.0);
     }
 
-    // Player should be grounded
-    assert!(physics.player_is_grounded(), "Player should be grounded at center");
-    let start_y = physics.player_position().unwrap().y;
+    // Body should be grounded
+    assert!(physics.body_is_grounded(key), "Body should be grounded at center");
+    let start_y = physics.body_position(key).unwrap().y;
 
-    // Move player to W=6 (outside floor's W bounds of -5 to +5)
+    // Move body to W=6 (outside floor's W bounds of -5 to +5)
     for _ in 0..60 {
-        physics.apply_player_movement(Vec4::new(0.0, 0.0, 0.0, 10.0));
+        physics.apply_body_movement(key, Vec4::new(0.0, 0.0, 0.0, 10.0));
         physics.step(1.0 / 60.0);
     }
 
-    let pos = physics.player_position().unwrap();
-    assert!(pos.w > 5.0, "Player should have moved off W edge. W={}", pos.w);
+    let pos = physics.body_position(key).unwrap();
+    assert!(pos.w > 5.0, "Body should have moved off W edge. W={}", pos.w);
 
-    assert!(!physics.player_is_grounded(),
-        "Player should NOT be grounded when off W edge. W={}", pos.w);
+    assert!(!physics.body_is_grounded(key),
+        "Body should NOT be grounded when off W edge. W={}", pos.w);
 
-    // Continue stepping - player should fall
+    // Continue stepping - body should fall
     for _ in 0..60 {
-        physics.apply_player_movement(Vec4::ZERO);
+        physics.apply_body_movement(key, Vec4::ZERO);
         physics.step(1.0 / 60.0);
     }
 
-    let final_pos = physics.player_position().unwrap();
+    let final_pos = physics.body_position(key).unwrap();
     assert!(final_pos.y < start_y,
-        "Player should fall when off W edge. Start Y={}, Final Y={}", start_y, final_pos.y);
+        "Body should fall when off W edge. Start Y={}, Final Y={}", start_y, final_pos.y);
 }
 
 /// Print detailed state for debugging

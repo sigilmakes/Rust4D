@@ -87,53 +87,61 @@ impl SimulationSystem {
             move_dir
         };
 
-        // 4. Apply movement to player via physics
+        // 4. Get player body key from active scene
+        let player_key = scene_manager
+            .active_scene()
+            .and_then(|s| s.player_body_key);
+
+        // 5. Apply movement to player via physics
         let move_speed = controller.move_speed;
-        if let Some(physics) = scene_manager
+        if let (Some(key), Some(physics)) = (player_key, scene_manager
             .active_world_mut()
-            .and_then(|w| w.physics_mut())
+            .and_then(|w| w.physics_mut()))
         {
-            physics.apply_player_movement(move_dir * move_speed);
+            physics.apply_body_movement(key, move_dir * move_speed);
         }
 
-        // 5. Handle jump
+        // 6. Handle jump
         if controller.consume_jump() {
-            if let Some(physics) = scene_manager
+            if let (Some(key), Some(physics)) = (player_key, scene_manager
                 .active_world_mut()
-                .and_then(|w| w.physics_mut())
+                .and_then(|w| w.physics_mut()))
             {
-                physics.player_jump();
+                // TODO: jump_velocity should come from game config, not hardcoded
+                physics.body_jump(key, 8.0);
             }
         }
 
-        // 6. Step world physics
+        // 7. Step world physics
         scene_manager.update(dt);
 
-        // 7. Check for dirty entities
+        // 8. Check for dirty entities
         let geometry_dirty = scene_manager
             .active_world()
             .map(|w| w.has_dirty_entities())
             .unwrap_or(false);
 
-        // 8. Sync camera position to player physics (all 4 dimensions)
-        if let Some(pos) = scene_manager
+        // 9. Sync camera position to player physics (all 4 dimensions)
+        if let (Some(key), Some(physics)) = (player_key, scene_manager
             .active_world()
-            .and_then(|w| w.physics())
-            .and_then(|p| p.player_position())
+            .and_then(|w| w.physics()))
         {
-            camera.position = pos;
+            if let Some(pos) = physics.body_position(key) {
+                camera.position = pos;
+            }
         }
 
-        // 9. Apply mouse look for camera rotation
+        // 10. Apply mouse look for camera rotation
         controller.update(camera, dt, cursor_captured);
 
-        // 10. Re-sync position after controller (discard its movement, keep rotation)
-        if let Some(pos) = scene_manager
+        // 11. Re-sync position after controller (discard its movement, keep rotation)
+        if let (Some(key), Some(physics)) = (player_key, scene_manager
             .active_world()
-            .and_then(|w| w.physics())
-            .and_then(|p| p.player_position())
+            .and_then(|w| w.physics()))
         {
-            camera.position = pos;
+            if let Some(pos) = physics.body_position(key) {
+                camera.position = pos;
+            }
         }
 
         SimulationResult { geometry_dirty }
