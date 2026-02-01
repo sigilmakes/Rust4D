@@ -16,7 +16,7 @@ The reports that help most aren't just "what I did" but "what I was thinking" - 
 Rust4D/
 ├── src/                        # Main source code (when created)
 ├── tests/                      # Test suite
-├── scratchpad/                 # Shared scratchpad (orphan branch worktree, gitignored)
+├── scratchpad/                 # Symlink to shared Obsidian vault (see ~/.claude/CLAUDE.md)
 │   ├── reports/                # Session reports
 │   ├── plans/                  # Work plans and architecture documents
 │   ├── ideas/                  # Feature ideas and improvement proposals
@@ -32,13 +32,13 @@ This project is written in Rust. Use `cargo` for building, testing, and running.
 
 # Work Planning
 
-1) The **shared scratchpad** lives on an orphan `scratchpad` git branch, mounted as a worktree at `scratchpad/` in the repo root. It is gitignored on `main`. All project notes, work logs and reports live there. Run `git worktree list` to confirm it's mounted -- if not, mount it with `git worktree add scratchpad scratchpad`.
+1) The **shared scratchpad** is a symlink into a shared Obsidian vault. All project notes, work logs and reports live there. See `~/.claude/CLAUDE.md` for vault details.
 
 2) When Claude first starts, it should review the latest work on the project by reviewing the git history and anything recent in the scratchpad
 
 3) When Claude is finished working on a long task, it should write a report on its work into a new timestamped markdown file in the scratchpad/reports folder. Session logs should be named `YYYY-MM-DD-HHMM-<topic>.md`. Use the `/report` skill to generate these.
 
-4) **Always commit scratchpad contents:** The scratchpad is on its own branch. To commit: `cd scratchpad && git add . && git commit -m "message" && cd ..`. Never leave scratchpad files uncommitted -- these are part of Claude's documentary memory.
+4) **Always commit scratchpad contents:** To commit: `cd scratchpad && git add . && git commit -m "message" && git push && cd ..`. Never leave scratchpad files uncommitted -- these are part of Claude's documentary memory.
 
 5) When creating workplans or estimating effort, use **session-based estimates** instead of human hours:
    - A "session" is one Claude Code context window (~15-30 minutes of human interaction)
@@ -118,19 +118,4 @@ Key principles:
 
 ## Multi-Swarm Operations
 
-When running multiple swarms in parallel across worktrees, a shared scratchpad
-lives on an orphan `scratchpad` branch, mounted as a worktree. Run
-`git worktree list` to find it. Use `/multi-swarm` to orchestrate.
-
-Key principles:
-- The Queen (this Claude instance) coordinates all swarms and commits to the scratchpad branch
-- Each swarm has a leader that runs the standard `/swarm` protocol in its worktree
-- The shared scratchpad is the single source of truth for all reports and coordination
-- Each worktree can have a local `.scratchpad/` (gitignored) for throwaway temp files
-
-# Skills
-
-- `/plan [topic]` - Create a detailed implementation plan and save to scratchpad/plans
-- `/swarm [task]` - Start a multi-agent task with hive-mind coordination
-- `/multi-swarm [task]` - Orchestrate multiple parallel swarms across git worktrees
-- `/report [topic]` - Write a session report to scratchpad/reports
+Use `/multi-swarm` to orchestrate multiple swarms across git worktrees. The shared scratchpad (symlinked into the Obsidian vault) is the single source of truth for all reports and coordination. Each worktree can have a local `.scratchpad/` (gitignored) for throwaway temp files.
