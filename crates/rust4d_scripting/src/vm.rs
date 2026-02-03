@@ -11,10 +11,8 @@ pub struct ScriptConfig {
     /// Whether to enable hot-reload file watching
     pub hot_reload: bool,
     /// Memory limit for the Lua VM in bytes (0 = unlimited).
-    /// TODO: Wire up via Lua::set_memory_limit() when mlua exposes it.
     pub memory_limit: usize,
     /// Instruction count limit per call (0 = unlimited, for sandboxing).
-    /// TODO: Wire up via Lua::set_hook() instruction counting.
     pub instruction_limit: u32,
 }
 
@@ -92,6 +90,33 @@ pub fn create_lua_vm(config: &ScriptConfig) -> Result<Lua, ScriptError> {
     globals
         .set("print", print_fn)
         .map_err(ScriptError::LuaError)?;
+
+    // Wire up memory limit if configured
+    if config.memory_limit > 0 {
+        lua.set_memory_limit(config.memory_limit)
+            .map_err(ScriptError::LuaError)?;
+    }
+
+    // Wire up instruction counting hook if configured
+    if config.instruction_limit > 0 {
+        let limit = config.instruction_limit;
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let count_clone = count.clone();
+        lua.set_hook(
+            mlua::HookTriggers::new().every_nth_instruction(1000),
+            move |_lua, _debug| {
+                let prev = count_clone.fetch_add(1000, std::sync::atomic::Ordering::Relaxed);
+                if prev + 1000 > limit {
+                    return Err(mlua::Error::RuntimeError(
+                        format!("instruction limit exceeded ({})", limit),
+                    ));
+                }
+                Ok(mlua::VmState::Continue)
+            },
+        );
+        // Store the counter on the Lua VM so callers can reset it between calls
+        lua.set_app_data(count);
+    }
 
     Ok(lua)
 }
