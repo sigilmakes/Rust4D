@@ -10,8 +10,10 @@ use rust4d_physics::{BodyKey, PhysicsWorld};
 /// Configuration for a character controller
 #[derive(Clone, Debug)]
 pub struct CharacterConfig {
-    /// Movement speed multiplier
+    /// Movement speed multiplier (XZ axes)
     pub move_speed: f32,
+    /// Movement speed multiplier for the W axis
+    pub w_move_speed: f32,
     /// Jump velocity (upward Y velocity when jumping)
     pub jump_velocity: f32,
 }
@@ -20,6 +22,7 @@ impl Default for CharacterConfig {
     fn default() -> Self {
         Self {
             move_speed: 3.0,
+            w_move_speed: 3.0,
             jump_velocity: 8.0,
         }
     }
@@ -49,9 +52,17 @@ impl CharacterController4D {
 
     /// Apply horizontal movement (XZW plane, preserves Y for gravity/jumping)
     ///
-    /// The movement vector is scaled by `config.move_speed` before being applied.
+    /// The X and Z components are scaled by `config.move_speed`, while the W
+    /// component is scaled by `config.w_move_speed`. Y is preserved as-is
+    /// (gravity/jumping handles vertical movement).
     pub fn apply_movement(&self, physics: &mut PhysicsWorld, movement: Vec4) {
-        physics.apply_body_movement(self.body_key, movement * self.config.move_speed);
+        let scaled = Vec4::new(
+            movement.x * self.config.move_speed,
+            movement.y * self.config.move_speed,
+            movement.z * self.config.move_speed,
+            movement.w * self.config.w_move_speed,
+        );
+        physics.apply_body_movement(self.body_key, scaled);
     }
 
     /// Attempt to jump. Returns true if successful (only works when grounded).
@@ -99,12 +110,14 @@ mod tests {
 
         let config = CharacterConfig {
             move_speed: 5.0,
+            w_move_speed: 4.0,
             jump_velocity: 10.0,
         };
         let controller = CharacterController4D::new(body_key, config.clone());
 
         assert_eq!(controller.body_key(), body_key);
         assert_eq!(controller.config.move_speed, 5.0);
+        assert_eq!(controller.config.w_move_speed, 4.0);
         assert_eq!(controller.config.jump_velocity, 10.0);
     }
 
@@ -112,6 +125,7 @@ mod tests {
     fn test_default_config() {
         let config = CharacterConfig::default();
         assert_eq!(config.move_speed, 3.0);
+        assert_eq!(config.w_move_speed, 3.0);
         assert_eq!(config.jump_velocity, 8.0);
     }
 
@@ -125,6 +139,7 @@ mod tests {
 
         let config = CharacterConfig {
             move_speed: 2.0,
+            w_move_speed: 2.0,
             jump_velocity: 8.0,
         };
         let controller = CharacterController4D::new(body_key, config);
@@ -137,6 +152,30 @@ mod tests {
         let pos = physics.body_position(body_key).unwrap();
         assert!((pos.x - 2.0).abs() < 0.01, "Expected x=2.0, got {}", pos.x);
         assert!((pos.z - 2.0).abs() < 0.01, "Expected z=2.0, got {}", pos.z);
+    }
+
+    #[test]
+    fn test_apply_movement_uses_w_move_speed_for_w_axis() {
+        let mut physics = PhysicsWorld::with_config(PhysicsConfig::new(0.0)); // No gravity
+        let body_key = physics.add_body(
+            RigidBody4D::new_sphere(Vec4::new(0.0, 1.0, 0.0, 0.0), 0.5)
+                .with_body_type(BodyType::Kinematic),
+        );
+
+        let config = CharacterConfig {
+            move_speed: 2.0,
+            w_move_speed: 5.0,
+            jump_velocity: 8.0,
+        };
+        let controller = CharacterController4D::new(body_key, config);
+
+        // Apply movement with W component: W should use w_move_speed (5.0), X should use move_speed (2.0)
+        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 0.0, 1.0));
+
+        physics.step(1.0);
+        let pos = physics.body_position(body_key).unwrap();
+        assert!((pos.x - 2.0).abs() < 0.01, "Expected x=2.0 (move_speed), got {}", pos.x);
+        assert!((pos.w - 5.0).abs() < 0.01, "Expected w=5.0 (w_move_speed), got {}", pos.w);
     }
 
     #[test]
@@ -213,6 +252,7 @@ mod tests {
 
         let config = CharacterConfig {
             move_speed: 3.0,
+            w_move_speed: 3.0,
             jump_velocity: 12.0,
         };
         let controller = CharacterController4D::new(body_key, config);
@@ -264,7 +304,7 @@ mod tests {
 
         let controller = CharacterController4D::new(
             body_key,
-            CharacterConfig { move_speed: 5.0, jump_velocity: 8.0 },
+            CharacterConfig { move_speed: 5.0, w_move_speed: 5.0, jump_velocity: 8.0 },
         );
 
         // First apply some movement

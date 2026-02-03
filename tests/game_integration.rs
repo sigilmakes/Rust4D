@@ -44,6 +44,7 @@ fn test_character_controller_with_active_scene() {
     // Create CharacterController4D from the player body key
     let controller = CharacterController4D::new(player_key, CharacterConfig {
         move_speed: 5.0,
+        w_move_speed: 5.0,
         jump_velocity: 10.0,
     });
 

@@ -129,6 +129,7 @@ impl App {
             .map(|key| {
                 CharacterController4D::new(key, CharacterConfig {
                     move_speed: config.input.move_speed,
+                    w_move_speed: config.input.w_move_speed,
                     jump_velocity: config.physics.jump_velocity,
                 })
             });

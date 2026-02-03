@@ -128,6 +128,18 @@ impl Vec4 {
             self.w * other.w,
         )
     }
+
+    /// Distance between two vectors
+    #[inline]
+    pub fn distance(self, other: Self) -> f32 {
+        (self - other).length()
+    }
+
+    /// Squared distance between two vectors (avoids sqrt)
+    #[inline]
+    pub fn distance_squared(self, other: Self) -> f32 {
+        (self - other).length_squared()
+    }
 }
 
 // Operator overloads
@@ -187,6 +199,20 @@ impl std::ops::Mul<f32> for Vec4 {
             self.y * scalar,
             self.z * scalar,
             self.w * scalar,
+        )
+    }
+}
+
+/// Commutative scalar multiplication: `f32 * Vec4`
+impl std::ops::Mul<Vec4> for f32 {
+    type Output = Vec4;
+    #[inline]
+    fn mul(self, vec: Vec4) -> Vec4 {
+        Vec4::new(
+            self * vec.x,
+            self * vec.y,
+            self * vec.z,
+            self * vec.w,
         )
     }
 }
@@ -367,5 +393,48 @@ mod tests {
         let b = Vec4::new(2.0, 3.0, 4.0, 5.0);
         let result = a.component_mul(b);
         assert_eq!(result, Vec4::new(2.0, 6.0, 12.0, 20.0));
+    }
+
+    #[test]
+    fn test_distance() {
+        let a = Vec4::new(1.0, 0.0, 0.0, 0.0);
+        let b = Vec4::new(4.0, 0.0, 0.0, 0.0);
+        assert!((a.distance(b) - 3.0).abs() < 0.0001);
+
+        // Distance to self is zero
+        assert!(a.distance(a) < 0.0001);
+
+        // Distance is commutative
+        assert!((a.distance(b) - b.distance(a)).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_distance_squared() {
+        let a = Vec4::new(1.0, 0.0, 0.0, 0.0);
+        let b = Vec4::new(4.0, 0.0, 0.0, 0.0);
+        assert!((a.distance_squared(b) - 9.0).abs() < 0.0001);
+
+        // Diagonal distance: (1,1,1,1) to (0,0,0,0) = sqrt(4) = 2, squared = 4
+        let c = Vec4::new(1.0, 1.0, 1.0, 1.0);
+        let d = Vec4::ZERO;
+        assert!((c.distance_squared(d) - 4.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_scalar_mul_commutative() {
+        let v = Vec4::new(1.0, 2.0, 3.0, 4.0);
+        let a = v * 2.5;
+        let b = 2.5 * v;
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_scalar_mul_lhs() {
+        let v = Vec4::new(1.0, 2.0, 3.0, 4.0);
+        let scaled = 3.0 * v;
+        assert_eq!(scaled.x, 3.0);
+        assert_eq!(scaled.y, 6.0);
+        assert_eq!(scaled.z, 9.0);
+        assert_eq!(scaled.w, 12.0);
     }
 }

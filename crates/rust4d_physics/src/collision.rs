@@ -5,6 +5,7 @@
 
 use bitflags::bitflags;
 
+use crate::body::BodyKey;
 use crate::shapes::{Plane4D, Sphere4D, AABB4D};
 use rust4d_math::Vec4;
 
@@ -131,6 +132,31 @@ impl CollisionFilter {
             mask: CollisionLayer::ENEMY | CollisionLayer::STATIC,
         }
     }
+}
+
+/// What kind of collision event occurred
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CollisionEventKind {
+    /// Two dynamic/kinematic bodies collided
+    BodyVsBody { body_a: BodyKey, body_b: BodyKey },
+    /// A body collided with a static collider
+    BodyVsStatic { body: BodyKey, static_index: usize },
+    /// A body entered a trigger zone
+    TriggerEnter { body: BodyKey, trigger_index: usize },
+    /// A body is staying inside a trigger zone
+    TriggerStay { body: BodyKey, trigger_index: usize },
+    /// A body exited a trigger zone
+    TriggerExit { body: BodyKey, trigger_index: usize },
+}
+
+/// A collision event generated during physics simulation
+#[derive(Clone, Debug)]
+pub struct CollisionEvent {
+    /// What kind of collision this is
+    pub kind: CollisionEventKind,
+    /// Contact information (point, normal, penetration).
+    /// `None` for `TriggerExit` events where the bodies have separated.
+    pub contact: Option<Contact>,
 }
 
 /// Contact information from a collision
@@ -341,6 +367,32 @@ pub fn aabb_vs_aabb(a: &AABB4D, b: &AABB4D) -> Option<Contact> {
     let point = (overlap_min + overlap_max) * 0.5;
 
     Some(Contact::new(point, normal, min_overlap))
+}
+
+/// Test sphere vs sphere collision
+///
+/// Returns a contact if the spheres are intersecting.
+/// The contact normal points from sphere A toward sphere B.
+pub fn sphere_vs_sphere(a: &Sphere4D, b: &Sphere4D) -> Option<Contact> {
+    let delta = b.center - a.center;
+    let dist_sq = delta.length_squared();
+    let min_dist = a.radius + b.radius;
+
+    if dist_sq < f32::EPSILON * f32::EPSILON {
+        // Coincident spheres: pick an arbitrary separation direction (Y-axis)
+        let penetration = min_dist;
+        let normal = Vec4::Y;
+        let point = a.center + normal * a.radius;
+        Some(Contact::new(point, normal, penetration))
+    } else if dist_sq < min_dist * min_dist {
+        let dist = dist_sq.sqrt();
+        let penetration = min_dist - dist;
+        let normal = delta.normalized();
+        let point = a.center + normal * a.radius;
+        Some(Contact::new(point, normal, penetration))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -612,5 +664,17 @@ mod tests {
         );
         assert!(aabb_vs_aabb(&tesseract_slightly_in, &floor).is_some(),
             "Tesseract slightly below resting position should collide");
+    }
+
+    #[test]
+    fn test_sphere_vs_sphere_coincident() {
+        // Two spheres at exactly the same position: use Y-axis as fallback normal
+        // and full combined radii as penetration depth.
+        let a = Sphere4D::new(Vec4::ZERO, 1.0);
+        let b = Sphere4D::new(Vec4::ZERO, 1.0);
+        let contact = sphere_vs_sphere(&a, &b).expect("Coincident spheres should return a contact");
+        assert_eq!(contact.normal, Vec4::Y, "Fallback normal should be Y-axis");
+        assert!((contact.penetration - 2.0).abs() < f32::EPSILON,
+            "Penetration should equal radius_a + radius_b");
     }
 }
