@@ -5,6 +5,7 @@
 
 use bitflags::bitflags;
 
+use crate::body::BodyKey;
 use crate::shapes::{Plane4D, Sphere4D, AABB4D};
 use rust4d_math::Vec4;
 
@@ -131,6 +132,30 @@ impl CollisionFilter {
             mask: CollisionLayer::ENEMY | CollisionLayer::STATIC,
         }
     }
+}
+
+/// What kind of collision event occurred
+#[derive(Clone, Copy, Debug)]
+pub enum CollisionEventKind {
+    /// Two dynamic/kinematic bodies collided
+    BodyVsBody { body_a: BodyKey, body_b: BodyKey },
+    /// A body collided with a static collider
+    BodyVsStatic { body: BodyKey, static_index: usize },
+    /// A body entered a trigger zone
+    TriggerEnter { body: BodyKey, trigger_index: usize },
+    /// A body is staying inside a trigger zone
+    TriggerStay { body: BodyKey, trigger_index: usize },
+    /// A body exited a trigger zone
+    TriggerExit { body: BodyKey, trigger_index: usize },
+}
+
+/// A collision event generated during physics simulation
+#[derive(Clone, Debug)]
+pub struct CollisionEvent {
+    /// What kind of collision this is
+    pub kind: CollisionEventKind,
+    /// Contact information (point, normal, penetration)
+    pub contact: Contact,
 }
 
 /// Contact information from a collision
