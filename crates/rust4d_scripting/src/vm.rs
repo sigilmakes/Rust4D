@@ -4,14 +4,17 @@ use mlua::prelude::*;
 use crate::error::ScriptError;
 
 /// Configuration for the scripting engine
+#[derive(Debug, Clone)]
 pub struct ScriptConfig {
     /// Root directory for game scripts
     pub scripts_dir: String,
     /// Whether to enable hot-reload file watching
     pub hot_reload: bool,
-    /// Memory limit for the Lua VM in bytes (0 = unlimited)
+    /// Memory limit for the Lua VM in bytes (0 = unlimited).
+    /// TODO: Wire up via Lua::set_memory_limit() when mlua exposes it.
     pub memory_limit: usize,
-    /// Instruction count limit per call (0 = unlimited, for sandboxing)
+    /// Instruction count limit per call (0 = unlimited, for sandboxing).
+    /// TODO: Wire up via Lua::set_hook() instruction counting.
     pub instruction_limit: u32,
 }
 
@@ -28,24 +31,34 @@ impl Default for ScriptConfig {
 
 /// Initialize a Lua VM with engine configuration.
 ///
-/// The VM is sandboxed: `os`, `io`, `loadfile`, and `dofile` are removed.
-/// `print()` is replaced with a version that routes to `log::info!`.
-/// `package.path` is configured to resolve `require()` from the scripts directory.
+/// The VM is sandboxed: dangerous globals and libraries are removed.
+/// Specifically: `os`, `io`, `debug`, `loadfile`, and `dofile` are removed.
+/// `package.cpath` is cleared and `package.loadlib` is removed to prevent
+/// loading native C modules. `print()` is replaced with a version that
+/// routes to `log::info!`. `package.path` is configured to resolve
+/// `require()` from the scripts directory only.
 pub fn create_lua_vm(config: &ScriptConfig) -> Result<Lua, ScriptError> {
     let lua = Lua::new();
 
-    // Configure package.path for require() resolution
-    lua.load(format!(
-        r#"package.path = "{0}/?.lua;{0}/?/init.lua""#,
-        config.scripts_dir.replace('\\', "/")
-    ))
-    .exec()
-    .map_err(ScriptError::LuaError)?;
+    // Configure package paths for require() resolution.
+    // Use the table API to avoid Lua code injection from special characters in the path.
+    {
+        let globals = lua.globals();
+        let package: LuaTable = globals.get("package").map_err(ScriptError::LuaError)?;
+        let scripts_dir = config.scripts_dir.replace('\\', "/");
+        let path = format!("{0}/?.lua;{0}/?/init.lua", scripts_dir);
+        package.set("path", path).map_err(ScriptError::LuaError)?;
+        // Clear cpath to prevent loading native C modules from system paths
+        package.set("cpath", "").map_err(ScriptError::LuaError)?;
+        // Remove loadlib which can load arbitrary shared libraries
+        package.set("loadlib", LuaNil).map_err(ScriptError::LuaError)?;
+    }
 
     // Remove dangerous standard library modules for sandboxing
     let globals = lua.globals();
     globals.set("os", LuaNil).map_err(ScriptError::LuaError)?;
     globals.set("io", LuaNil).map_err(ScriptError::LuaError)?;
+    globals.set("debug", LuaNil).map_err(ScriptError::LuaError)?;
     globals
         .set("loadfile", LuaNil)
         .map_err(ScriptError::LuaError)?;
@@ -101,11 +114,18 @@ mod tests {
         let lua = create_lua_vm(&config).unwrap();
         let globals = lua.globals();
 
-        // These should be nil
+        // These should be nil (sandboxed)
         assert!(globals.get::<LuaValue>("os").unwrap() == LuaNil);
         assert!(globals.get::<LuaValue>("io").unwrap() == LuaNil);
+        assert!(globals.get::<LuaValue>("debug").unwrap() == LuaNil);
         assert!(globals.get::<LuaValue>("loadfile").unwrap() == LuaNil);
         assert!(globals.get::<LuaValue>("dofile").unwrap() == LuaNil);
+
+        // package.cpath should be empty, package.loadlib should be nil
+        let package: LuaTable = globals.get("package").unwrap();
+        let cpath: String = package.get("cpath").unwrap();
+        assert!(cpath.is_empty(), "package.cpath should be empty");
+        assert!(package.get::<LuaValue>("loadlib").unwrap() == LuaNil);
 
         // These should still exist
         assert!(globals.get::<LuaValue>("math").unwrap() != LuaNil);

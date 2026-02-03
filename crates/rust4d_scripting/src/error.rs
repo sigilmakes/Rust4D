@@ -14,7 +14,8 @@ pub enum ScriptError {
         callback: String,
         error: mlua::Error,
     },
-    /// Hot-reload error (old script continues running)
+    /// Hot-reload error (old script continues running).
+    /// Placeholder for future hot-reload support.
     ReloadError {
         path: String,
         error: mlua::Error,
@@ -34,6 +35,12 @@ impl std::fmt::Display for ScriptError {
                 write!(f, "Reload failed for {}: {}", path, error)
             }
         }
+    }
+}
+
+impl From<mlua::Error> for ScriptError {
+    fn from(err: mlua::Error) -> Self {
+        ScriptError::LuaError(err)
     }
 }
 

@@ -135,7 +135,7 @@ impl CollisionFilter {
 }
 
 /// What kind of collision event occurred
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CollisionEventKind {
     /// Two dynamic/kinematic bodies collided
     BodyVsBody { body_a: BodyKey, body_b: BodyKey },
@@ -658,5 +658,17 @@ mod tests {
         );
         assert!(aabb_vs_aabb(&tesseract_slightly_in, &floor).is_some(),
             "Tesseract slightly below resting position should collide");
+    }
+
+    #[test]
+    fn test_sphere_vs_sphere_coincident_returns_none() {
+        // Two spheres at exactly the same position produce a degenerate case
+        // (zero-length delta). The function returns None to avoid a NaN normal.
+        // This is a documented limitation — game logic should not place objects
+        // at identical positions.
+        let a = Sphere4D::new(Vec4::ZERO, 1.0);
+        let b = Sphere4D::new(Vec4::ZERO, 1.0);
+        assert!(sphere_vs_sphere(&a, &b).is_none(),
+            "Coincident spheres should return None (degenerate case)");
     }
 }

@@ -12,10 +12,19 @@ pub struct Ray4D {
 }
 
 impl Ray4D {
-    /// Create a new ray from an origin and direction
+    /// Create a new ray from an origin and direction.
     ///
     /// The direction is automatically normalized.
+    ///
+    /// # Panics
+    ///
+    /// Debug-asserts that `direction` is non-zero. A zero-direction ray
+    /// cannot produce meaningful intersection results.
     pub fn new(origin: Vec4, direction: Vec4) -> Self {
+        debug_assert!(
+            direction.length_squared() > 0.0,
+            "Ray4D direction must be non-zero"
+        );
         Self {
             origin,
             direction: direction.normalized(),

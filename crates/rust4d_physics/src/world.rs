@@ -51,12 +51,16 @@ impl PhysicsConfig {
     }
 }
 
-/// Identifies what a ray hit in the physics world
+/// Identifies what a ray hit in the physics world.
+///
+/// **Note:** `Static` indices are positions in the internal `Vec<StaticCollider>`.
+/// These indices are stable as long as no static colliders are removed or reordered.
+/// Currently there is no API to remove static colliders, so indices are safe to store.
 #[derive(Clone, Copy, Debug)]
 pub enum RayTarget {
     /// A dynamic/kinematic body
     Body(BodyKey),
-    /// A static collider (by index)
+    /// A static collider (by index in the world's static collider list)
     Static(usize),
 }
 
@@ -220,9 +224,39 @@ impl PhysicsWorld {
         hits
     }
 
-    /// Cast a ray and return only the nearest hit
+    /// Cast a ray and return only the nearest hit.
+    ///
+    /// More efficient than `raycast()` for the common case — performs a
+    /// single pass without allocating or sorting.
     pub fn raycast_nearest(&self, ray: &Ray4D, max_distance: f32, layer_mask: CollisionLayer) -> Option<WorldRayHit> {
-        self.raycast(ray, max_distance, layer_mask).into_iter().next()
+        let mut nearest: Option<WorldRayHit> = None;
+        let mut nearest_dist = max_distance;
+
+        for (key, body) in &self.bodies {
+            if !body.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+            if let Some(hit) = ray_vs_collider(ray, &body.collider) {
+                if hit.distance <= nearest_dist {
+                    nearest_dist = hit.distance;
+                    nearest = Some(WorldRayHit { hit, target: RayTarget::Body(key) });
+                }
+            }
+        }
+
+        for (index, static_col) in self.static_colliders.iter().enumerate() {
+            if !static_col.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+            if let Some(hit) = ray_vs_collider(ray, &static_col.collider) {
+                if hit.distance <= nearest_dist {
+                    nearest_dist = hit.distance;
+                    nearest = Some(WorldRayHit { hit, target: RayTarget::Static(index) });
+                }
+            }
+        }
+
+        nearest
     }
 
     // ====== Collision Events ======
