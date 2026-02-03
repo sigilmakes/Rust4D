@@ -631,6 +631,38 @@ impl World {
             }
         }
 
+
+        // Check all Children components for stale/non-existent references
+        for (entity, children) in self.ecs.query::<&Children>().iter() {
+            for &child in &children.0 {
+                if !self.ecs.contains(child) {
+                    issues.push(format!(
+                        "Entity {:?} has Children listing non-existent entity {:?}",
+                        entity, child
+                    ));
+                    continue;
+                }
+
+                // Check child's Parent points back to this entity
+                match self.ecs.get::<&Parent>(child) {
+                    Ok(parent) => {
+                        if parent.0 != entity {
+                            issues.push(format!(
+                                "Entity {:?} lists {:?} as child, but child's Parent is {:?}",
+                                entity, child, parent.0
+                            ));
+                        }
+                    }
+                    Err(_) => {
+                        issues.push(format!(
+                            "Entity {:?} lists {:?} as child, but child has no Parent component",
+                            entity, child
+                        ));
+                    }
+                }
+            }
+        }
+
         // Check for cycles by walking up from each entity with a depth limit
         for (entity, _) in self.ecs.query::<&Parent>().iter() {
             let mut current = entity;
@@ -649,6 +681,62 @@ impl World {
         }
 
         issues
+    }
+
+    /// Validate component schema consistency across entities
+    ///
+    /// Checks for common misconfigurations:
+    /// - Entity with PhysicsBody but no Transform4D
+    /// - Entity with Children listing entities that lack a Parent component
+    ///   (also covered by validate_hierarchy, but this gives a schema-level view)
+    /// - Entity with Parent but no Transform4D (unusual for hierarchy nodes)
+    ///
+    /// Returns a Vec of human-readable warning strings. Empty means no issues found.
+    pub fn validate_component_schemas(&self) -> Vec<String> {
+        let mut warnings = Vec::new();
+
+        // PhysicsBody requires Transform4D
+        for (entity, _body) in self.ecs.query::<&PhysicsBody>().iter() {
+            if self.ecs.get::<&Transform4D>(entity).is_err() {
+                let name = self.ecs.get::<&Name>(entity)
+                    .map(|n| format!(" (\"{}\")", n.0))
+                    .unwrap_or_default();
+                warnings.push(format!(
+                    "Entity {:?}{} has PhysicsBody but no Transform4D",
+                    entity, name
+                ));
+            }
+        }
+
+        // Children with entries that lack Parent component
+        for (entity, children) in self.ecs.query::<&Children>().iter() {
+            for &child in &children.0 {
+                if self.ecs.contains(child) && self.ecs.get::<&Parent>(child).is_err() {
+                    let name = self.ecs.get::<&Name>(entity)
+                        .map(|n| format!(" (\"{}\")", n.0))
+                        .unwrap_or_default();
+                    warnings.push(format!(
+                        "Entity {:?}{} has child {:?} that lacks a Parent component",
+                        entity, name, child
+                    ));
+                }
+            }
+        }
+
+        // Parent component but no Transform4D (hierarchy nodes usually need transforms)
+        for (entity, _parent) in self.ecs.query::<&Parent>().iter() {
+            if self.ecs.get::<&Transform4D>(entity).is_err() {
+                let name = self.ecs.get::<&Name>(entity)
+                    .map(|n| format!(" (\"{}\")", n.0))
+                    .unwrap_or_default();
+                warnings.push(format!(
+                    "Entity {:?}{} has Parent but no Transform4D (hierarchy node without transform)",
+                    entity, name
+                ));
+            }
+        }
+
+        warnings
     }
 }
 
@@ -1761,4 +1849,89 @@ mod tests {
         let issues = world.validate_hierarchy();
         assert!(!issues.is_empty(), "Should detect child not listed in parent's Children");
     }
+
+    #[test]
+    fn test_validate_hierarchy_detects_stale_child() {
+        let mut world = World::new();
+        let parent = spawn_test_entity(&mut world);
+
+        // Create a child, add to parent's Children, then despawn the child
+        let child = spawn_test_entity(&mut world);
+        world.add_child(parent, child).unwrap();
+        // Directly remove child from ECS to simulate stale reference
+        // We need to bypass normal despawn to leave the Children entry intact
+        world.ecs_mut_unchecked().despawn(child).unwrap();
+
+        let issues = world.validate_hierarchy();
+        assert!(
+            issues.iter().any(|i| i.contains("non-existent")),
+            "Should detect stale child reference; got: {:?}", issues
+        );
+    }
+
+    #[test]
+    fn test_validate_hierarchy_child_parent_mismatch() {
+        let mut world = World::new();
+        let parent_a = spawn_test_entity(&mut world);
+        let parent_b = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
+
+        // Set up child under parent_a properly
+        world.add_child(parent_a, child).unwrap();
+
+        // Now manually add child to parent_b's Children without updating child's Parent
+        let _ = world.ecs_mut_unchecked().insert_one(parent_b, Children(vec![child]));
+
+        let issues = world.validate_hierarchy();
+        assert!(
+            issues.iter().any(|i| i.contains("child's Parent")),
+            "Should detect child-parent mismatch; got: {:?}", issues
+        );
+    }
+
+    #[test]
+    fn test_validate_component_schemas_physics_no_transform() {
+        let mut world = World::new();
+        // Spawn entity with only PhysicsBody, no Transform4D
+        let _entity = world.ecs_mut_unchecked().spawn((
+            PhysicsBody(crate::BodyKey::default()),
+        ));
+
+        let warnings = world.validate_component_schemas();
+        assert!(
+            warnings.iter().any(|w| w.contains("PhysicsBody but no Transform4D")),
+            "Should detect PhysicsBody without Transform4D; got: {:?}", warnings
+        );
+    }
+
+    #[test]
+    fn test_validate_component_schemas_child_missing_parent() {
+        let mut world = World::new();
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
+
+        // Manually add child to parent's Children without setting Parent on child
+        let _ = world.ecs_mut_unchecked().insert_one(parent, Children(vec![child]));
+
+        let warnings = world.validate_component_schemas();
+        assert!(
+            warnings.iter().any(|w| w.contains("lacks a Parent component")),
+            "Should detect child without Parent; got: {:?}", warnings
+        );
+    }
+
+    #[test]
+    fn test_validate_component_schemas_clean() {
+        let mut world = World::new();
+        let parent = spawn_test_entity(&mut world);
+        let child = spawn_test_entity(&mut world);
+        world.add_child(parent, child).unwrap();
+
+        let warnings = world.validate_component_schemas();
+        assert!(
+            warnings.is_empty(),
+            "Valid world should have no schema warnings; got: {:?}", warnings
+        );
+    }
+
 }
