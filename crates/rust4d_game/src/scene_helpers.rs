@@ -154,6 +154,7 @@ mod tests {
         // Wrap in CharacterController4D
         let controller = CharacterController4D::new(key, CharacterConfig {
             move_speed: 5.0,
+            w_move_speed: 5.0,
             jump_velocity: 10.0,
         });
 
