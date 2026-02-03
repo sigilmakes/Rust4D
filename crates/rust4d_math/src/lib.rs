@@ -18,6 +18,7 @@
 mod vec4;
 mod rotor4;
 pub mod mat4;
+pub mod ray;
 pub mod shape;
 pub mod tesseract;
 pub mod hyperplane;
@@ -25,6 +26,7 @@ pub mod hyperplane;
 pub use vec4::Vec4;
 pub use rotor4::{Rotor4, RotationPlane};
 pub use mat4::Mat4;
+pub use ray::Ray4D;
 pub use shape::{ConvexShape4D, Tetrahedron};
 pub use tesseract::Tesseract4D;
 pub use hyperplane::Hyperplane4D;
