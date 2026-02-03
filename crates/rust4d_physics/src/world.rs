@@ -1,9 +1,10 @@
 //! Physics world and simulation
 
 use crate::body::{BodyKey, RigidBody4D, StaticCollider};
-use crate::collision::{aabb_vs_aabb, aabb_vs_plane, sphere_vs_aabb, sphere_vs_plane, sphere_vs_sphere, Contact};
+use crate::collision::{aabb_vs_aabb, aabb_vs_plane, sphere_vs_aabb, sphere_vs_plane, sphere_vs_sphere, CollisionLayer, Contact};
+use crate::raycast::{ray_vs_collider, RayHit};
 use crate::shapes::Collider;
-use rust4d_math::Vec4;
+use rust4d_math::{Ray4D, Vec4};
 use slotmap::SlotMap;
 
 use serde::{Serialize, Deserialize};
@@ -47,6 +48,24 @@ impl PhysicsConfig {
         self.fixed_dt = fixed_dt;
         self
     }
+}
+
+/// Identifies what a ray hit in the physics world
+#[derive(Clone, Copy, Debug)]
+pub enum RayTarget {
+    /// A dynamic/kinematic body
+    Body(BodyKey),
+    /// A static collider (by index)
+    Static(usize),
+}
+
+/// Result of a world raycast including what was hit
+#[derive(Clone, Copy, Debug)]
+pub struct WorldRayHit {
+    /// The ray intersection details
+    pub hit: RayHit,
+    /// What the ray hit
+    pub target: RayTarget,
 }
 
 /// The physics world containing all rigid bodies
@@ -154,6 +173,49 @@ impl PhysicsWorld {
             }
         }
         false
+    }
+
+    // ====== Raycasting Methods ======
+
+    /// Cast a ray against all bodies and static colliders in the world
+    ///
+    /// Returns all hits within max_distance whose collision layer matches
+    /// layer_mask, sorted by distance (nearest first).
+    pub fn raycast(&self, ray: &Ray4D, max_distance: f32, layer_mask: CollisionLayer) -> Vec<WorldRayHit> {
+        let mut hits = Vec::new();
+
+        // Check all bodies
+        for (key, body) in &self.bodies {
+            if !body.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+            if let Some(hit) = ray_vs_collider(ray, &body.collider) {
+                if hit.distance <= max_distance {
+                    hits.push(WorldRayHit { hit, target: RayTarget::Body(key) });
+                }
+            }
+        }
+
+        // Check all static colliders
+        for (index, static_col) in self.static_colliders.iter().enumerate() {
+            if !static_col.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+            if let Some(hit) = ray_vs_collider(ray, &static_col.collider) {
+                if hit.distance <= max_distance {
+                    hits.push(WorldRayHit { hit, target: RayTarget::Static(index) });
+                }
+            }
+        }
+
+        // Sort by distance (nearest first)
+        hits.sort_by(|a, b| a.hit.distance.partial_cmp(&b.hit.distance).unwrap_or(std::cmp::Ordering::Equal));
+        hits
+    }
+
+    /// Cast a ray and return only the nearest hit
+    pub fn raycast_nearest(&self, ray: &Ray4D, max_distance: f32, layer_mask: CollisionLayer) -> Option<WorldRayHit> {
+        self.raycast(ray, max_distance, layer_mask).into_iter().next()
     }
 
     /// Update the physics simulation using fixed timestep accumulator
@@ -1535,5 +1597,133 @@ mod tests {
 
         let body = world.get_body(key).unwrap();
         assert!((body.velocity.y - (-2.0)).abs() < 0.0001);
+    }
+
+    // ====== World Raycast Tests ======
+
+    #[test]
+    fn test_raycast_hit_body() {
+        use crate::collision::CollisionLayer;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+        let body = RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 1.0);
+        let key = world.add_body(body);
+
+        let ray = Ray4D::new(Vec4::ZERO, Vec4::X);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
+
+        assert_eq!(hits.len(), 1);
+        match hits[0].target {
+            RayTarget::Body(k) => assert_eq!(k, key),
+            _ => panic!("Expected body hit"),
+        }
+        assert!((hits[0].hit.distance - 4.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_raycast_hit_static() {
+        use crate::collision::CollisionLayer;
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+        world.add_static_collider(StaticCollider::floor(0.0, PhysicsMaterial::CONCRETE));
+
+        let ray = Ray4D::new(Vec4::new(0.0, 5.0, 0.0, 0.0), -Vec4::Y);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
+
+        assert!(hits.len() >= 1);
+        match hits[0].target {
+            RayTarget::Static(0) => {}
+            _ => panic!("Expected static hit at index 0"),
+        }
+    }
+
+    #[test]
+    fn test_raycast_miss_all() {
+        use crate::collision::CollisionLayer;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+        let _body = RigidBody4D::new_sphere(Vec4::new(5.0, 5.0, 0.0, 0.0), 1.0);
+        world.add_body(_body);
+
+        // Ray going in wrong direction
+        let ray = Ray4D::new(Vec4::ZERO, -Vec4::X);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn test_raycast_layer_filtering() {
+        use crate::collision::{CollisionFilter, CollisionLayer};
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add an enemy body
+        let enemy = RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 1.0)
+            .with_filter(CollisionFilter::enemy());
+        world.add_body(enemy);
+
+        // Ray looking for PLAYER layer only - should miss enemy
+        let ray = Ray4D::new(Vec4::ZERO, Vec4::X);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::PLAYER);
+        assert!(hits.is_empty(), "Enemy should not match PLAYER layer mask");
+
+        // Ray looking for ENEMY layer - should hit
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ENEMY);
+        assert_eq!(hits.len(), 1, "Enemy should match ENEMY layer mask");
+    }
+
+    #[test]
+    fn test_raycast_max_distance_cutoff() {
+        use crate::collision::CollisionLayer;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 1.0));
+
+        let ray = Ray4D::new(Vec4::ZERO, Vec4::X);
+
+        // Max distance too short
+        let hits = world.raycast(&ray, 5.0, CollisionLayer::ALL);
+        assert!(hits.is_empty(), "Should miss due to max_distance");
+
+        // Max distance sufficient
+        let hits = world.raycast(&ray, 20.0, CollisionLayer::ALL);
+        assert_eq!(hits.len(), 1, "Should hit within max_distance");
+    }
+
+    #[test]
+    fn test_raycast_sorted_results() {
+        use crate::collision::CollisionLayer;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add spheres at increasing distances
+        let _far = world.add_body(RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 0.5));
+        let _near = world.add_body(RigidBody4D::new_sphere(Vec4::new(3.0, 0.0, 0.0, 0.0), 0.5));
+        let _mid = world.add_body(RigidBody4D::new_sphere(Vec4::new(6.0, 0.0, 0.0, 0.0), 0.5));
+
+        let ray = Ray4D::new(Vec4::ZERO, Vec4::X);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
+
+        assert_eq!(hits.len(), 3);
+        // Should be sorted by distance
+        assert!(hits[0].hit.distance < hits[1].hit.distance);
+        assert!(hits[1].hit.distance < hits[2].hit.distance);
+    }
+
+    #[test]
+    fn test_raycast_nearest() {
+        use crate::collision::CollisionLayer;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+        let near = world.add_body(RigidBody4D::new_sphere(Vec4::new(3.0, 0.0, 0.0, 0.0), 0.5));
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 0.5));
+
+        let ray = Ray4D::new(Vec4::ZERO, Vec4::X);
+        let hit = world.raycast_nearest(&ray, 100.0, CollisionLayer::ALL);
+
+        assert!(hit.is_some());
+        match hit.unwrap().target {
+            RayTarget::Body(k) => assert_eq!(k, near),
+            _ => panic!("Expected body hit"),
+        }
     }
 }

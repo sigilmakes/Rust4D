@@ -19,4 +19,4 @@ pub use collision::{aabb_vs_aabb, aabb_vs_plane, sphere_vs_aabb, sphere_vs_plane
 pub use material::PhysicsMaterial;
 pub use shapes::{Collider, Plane4D, Sphere4D, AABB4D};
 pub use raycast::{RayHit, ray_vs_sphere, ray_vs_aabb, ray_vs_plane, ray_vs_collider};
-pub use world::{PhysicsConfig, PhysicsWorld};
+pub use world::{PhysicsConfig, PhysicsWorld, RayTarget, WorldRayHit};
