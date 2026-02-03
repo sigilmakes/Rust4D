@@ -67,7 +67,7 @@ impl RigidBody4D {
         self.body_type == BodyType::Static
     }
 
-    /// Check if this body is kinematic (user-controlled, no gravity)
+    /// Check if this body is kinematic (user-controlled, gravity opt-in)
     #[inline]
     pub fn is_kinematic(&self) -> bool {
         self.body_type == BodyType::Kinematic
@@ -167,7 +167,7 @@ impl RigidBody4D {
     /// Set whether this body is static (legacy API)
     ///
     /// For new code, prefer `with_body_type(BodyType::Static)`.
-    #[deprecated(note = "Use with_body_type(BodyType::Static) instead")]
+    #[deprecated(since = "0.2.0", note = "Use with_body_type(BodyType::Static) instead")]
     pub fn with_static(mut self, is_static: bool) -> Self {
         if is_static {
             self.body_type = BodyType::Static;
