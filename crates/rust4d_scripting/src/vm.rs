@@ -1,0 +1,140 @@
+//! Lua VM initialization and configuration
+
+use mlua::prelude::*;
+use crate::error::ScriptError;
+
+/// Configuration for the scripting engine
+pub struct ScriptConfig {
+    /// Root directory for game scripts
+    pub scripts_dir: String,
+    /// Whether to enable hot-reload file watching
+    pub hot_reload: bool,
+    /// Memory limit for the Lua VM in bytes (0 = unlimited)
+    pub memory_limit: usize,
+    /// Instruction count limit per call (0 = unlimited, for sandboxing)
+    pub instruction_limit: u32,
+}
+
+impl Default for ScriptConfig {
+    fn default() -> Self {
+        Self {
+            scripts_dir: "scripts".to_string(),
+            hot_reload: cfg!(debug_assertions),
+            memory_limit: 64 * 1024 * 1024, // 64MB
+            instruction_limit: 0,
+        }
+    }
+}
+
+/// Initialize a Lua VM with engine configuration.
+///
+/// The VM is sandboxed: `os`, `io`, `loadfile`, and `dofile` are removed.
+/// `print()` is replaced with a version that routes to `log::info!`.
+/// `package.path` is configured to resolve `require()` from the scripts directory.
+pub fn create_lua_vm(config: &ScriptConfig) -> Result<Lua, ScriptError> {
+    let lua = Lua::new();
+
+    // Configure package.path for require() resolution
+    lua.load(format!(
+        r#"package.path = "{0}/?.lua;{0}/?/init.lua""#,
+        config.scripts_dir.replace('\\', "/")
+    ))
+    .exec()
+    .map_err(ScriptError::LuaError)?;
+
+    // Remove dangerous standard library modules for sandboxing
+    let globals = lua.globals();
+    globals.set("os", LuaNil).map_err(ScriptError::LuaError)?;
+    globals.set("io", LuaNil).map_err(ScriptError::LuaError)?;
+    globals
+        .set("loadfile", LuaNil)
+        .map_err(ScriptError::LuaError)?;
+    globals
+        .set("dofile", LuaNil)
+        .map_err(ScriptError::LuaError)?;
+
+    // Replace print() with engine-aware version that routes to log::info
+    let print_fn = lua
+        .create_function(|_, args: LuaMultiValue| {
+            let parts: Vec<String> = args
+                .iter()
+                .map(|v| match v {
+                    LuaValue::Nil => "nil".to_string(),
+                    LuaValue::Boolean(b) => b.to_string(),
+                    LuaValue::Integer(n) => n.to_string(),
+                    LuaValue::Number(n) => n.to_string(),
+                    LuaValue::String(s) => {
+                        match s.to_str() {
+                            Ok(s) => s.to_string(),
+                            Err(_) => "<invalid utf8>".to_string(),
+                        }
+                    }
+                    other => format!("{:?}", other),
+                })
+                .collect();
+            log::info!("[lua] {}", parts.join("\t"));
+            Ok(())
+        })
+        .map_err(ScriptError::LuaError)?;
+    globals
+        .set("print", print_fn)
+        .map_err(ScriptError::LuaError)?;
+
+    Ok(lua)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vm_creates_with_default_config() {
+        let config = ScriptConfig::default();
+        let lua = create_lua_vm(&config).expect("VM should create");
+        // Verify we can execute basic Lua
+        lua.load("local x = 1 + 1").exec().unwrap();
+    }
+
+    #[test]
+    fn test_sandboxed_globals_removed() {
+        let config = ScriptConfig::default();
+        let lua = create_lua_vm(&config).unwrap();
+        let globals = lua.globals();
+
+        // These should be nil
+        assert!(globals.get::<LuaValue>("os").unwrap() == LuaNil);
+        assert!(globals.get::<LuaValue>("io").unwrap() == LuaNil);
+        assert!(globals.get::<LuaValue>("loadfile").unwrap() == LuaNil);
+        assert!(globals.get::<LuaValue>("dofile").unwrap() == LuaNil);
+
+        // These should still exist
+        assert!(globals.get::<LuaValue>("math").unwrap() != LuaNil);
+        assert!(globals.get::<LuaValue>("string").unwrap() != LuaNil);
+        assert!(globals.get::<LuaValue>("table").unwrap() != LuaNil);
+        assert!(globals.get::<LuaValue>("coroutine").unwrap() != LuaNil);
+    }
+
+    #[test]
+    fn test_print_does_not_panic() {
+        let config = ScriptConfig::default();
+        let lua = create_lua_vm(&config).unwrap();
+        // Should not panic even though log isn't fully initialized
+        lua.load(r#"print("hello", 42, true, nil)"#)
+            .exec()
+            .unwrap();
+    }
+
+    #[test]
+    fn test_package_path_configured() {
+        let config = ScriptConfig {
+            scripts_dir: "/tmp/test_scripts".to_string(),
+            ..Default::default()
+        };
+        let lua = create_lua_vm(&config).unwrap();
+        let path: String = lua
+            .load("return package.path")
+            .eval()
+            .unwrap();
+        assert!(path.contains("/tmp/test_scripts/?.lua"));
+    }
+}
