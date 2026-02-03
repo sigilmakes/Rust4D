@@ -154,8 +154,9 @@ pub enum CollisionEventKind {
 pub struct CollisionEvent {
     /// What kind of collision this is
     pub kind: CollisionEventKind,
-    /// Contact information (point, normal, penetration)
-    pub contact: Contact,
+    /// Contact information (point, normal, penetration).
+    /// `None` for `TriggerExit` events where the bodies have separated.
+    pub contact: Option<Contact>,
 }
 
 /// Contact information from a collision
