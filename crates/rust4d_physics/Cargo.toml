@@ -9,3 +9,4 @@ rust4d_math = { path = "../rust4d_math" }
 slotmap.workspace = true
 bitflags.workspace = true
 serde = { version = "1", features = ["derive"] }
+log = "0.4"

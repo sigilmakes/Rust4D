@@ -60,7 +60,10 @@ impl PhysicsConfig {
 pub enum RayTarget {
     /// A dynamic/kinematic body
     Body(BodyKey),
-    /// A static collider (by index in the world's static collider list)
+    /// A static collider, identified by its index in the world's static collider list.
+    ///
+    /// These indices are stable for the lifetime of the [`PhysicsWorld`] — they are
+    /// never reused or compacted. See [`PhysicsWorld::add_static_collider`] for details.
     Static(usize),
 }
 
@@ -111,7 +114,14 @@ impl PhysicsWorld {
         }
     }
 
-    /// Add a static collider to the world
+    /// Add a static collider to the world and return its index.
+    ///
+    /// # Index stability invariant
+    ///
+    /// Static collider indices are stable for the lifetime of the `PhysicsWorld`
+    /// and are never reused or compacted. There is currently no API to remove
+    /// static colliders, so indices returned here are safe to store and use for
+    /// the entire lifetime of the world (e.g. in `RayTarget::Static`).
     pub fn add_static_collider(&mut self, collider: StaticCollider) {
         self.static_colliders.push(collider);
     }
@@ -126,9 +136,15 @@ impl PhysicsWorld {
         self.bodies.insert(body)
     }
 
-    /// Remove a body from the world and return it
+    /// Remove a body from the world and return it.
+    ///
+    /// Returns `None` and logs a warning if the key is stale or invalid.
     pub fn remove_body(&mut self, key: BodyKey) -> Option<RigidBody4D> {
-        self.bodies.remove(key)
+        let result = self.bodies.remove(key);
+        if result.is_none() {
+            log::warn!("remove_body called with stale or invalid key: {:?}", key);
+        }
+        result
     }
 
     /// Get an immutable reference to a body by key

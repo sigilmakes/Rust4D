@@ -378,7 +378,13 @@ pub fn sphere_vs_sphere(a: &Sphere4D, b: &Sphere4D) -> Option<Contact> {
     let dist_sq = delta.length_squared();
     let min_dist = a.radius + b.radius;
 
-    if dist_sq < min_dist * min_dist && dist_sq > 0.0001 {
+    if dist_sq < f32::EPSILON * f32::EPSILON {
+        // Coincident spheres: pick an arbitrary separation direction (Y-axis)
+        let penetration = min_dist;
+        let normal = Vec4::Y;
+        let point = a.center + normal * a.radius;
+        Some(Contact::new(point, normal, penetration))
+    } else if dist_sq < min_dist * min_dist {
         let dist = dist_sq.sqrt();
         let penetration = min_dist - dist;
         let normal = delta.normalized();
@@ -661,14 +667,14 @@ mod tests {
     }
 
     #[test]
-    fn test_sphere_vs_sphere_coincident_returns_none() {
-        // Two spheres at exactly the same position produce a degenerate case
-        // (zero-length delta). The function returns None to avoid a NaN normal.
-        // This is a documented limitation — game logic should not place objects
-        // at identical positions.
+    fn test_sphere_vs_sphere_coincident() {
+        // Two spheres at exactly the same position: use Y-axis as fallback normal
+        // and full combined radii as penetration depth.
         let a = Sphere4D::new(Vec4::ZERO, 1.0);
         let b = Sphere4D::new(Vec4::ZERO, 1.0);
-        assert!(sphere_vs_sphere(&a, &b).is_none(),
-            "Coincident spheres should return None (degenerate case)");
+        let contact = sphere_vs_sphere(&a, &b).expect("Coincident spheres should return a contact");
+        assert_eq!(contact.normal, Vec4::Y, "Fallback normal should be Y-axis");
+        assert!((contact.penetration - 2.0).abs() < f32::EPSILON,
+            "Penetration should equal radius_a + radius_b");
     }
 }
