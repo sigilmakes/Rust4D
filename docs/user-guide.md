@@ -869,6 +869,7 @@ let player_key = scene_helpers::create_player_body(&mut physics, spawn, 0.5);
 // Create character controller wrapping the body key
 let controller = CharacterController4D::new(player_key, CharacterConfig {
     move_speed: 5.0,
+    w_move_speed: 5.0,
     jump_velocity: 8.0,
 });
 ```

@@ -37,7 +37,7 @@ pub struct EventBus {
     /// Handlers indexed by event TypeId, each with a unique counter for removal
     handlers: HandlerMap,
     /// Queued events waiting to be dispatched
-    queued: Vec<(TypeId, Box<dyn Any>)>,
+    queued: Vec<(TypeId, Box<dyn Any + Send + Sync>)>,
     /// Monotonically increasing counter for handler IDs
     next_id: usize,
 }
@@ -91,7 +91,7 @@ impl EventBus {
     /// Queue an event to be dispatched
     ///
     /// The event is stored and will be delivered to handlers when `dispatch()` is called.
-    pub fn emit<T: 'static>(&mut self, event: T) {
+    pub fn emit<T: 'static + Send + Sync>(&mut self, event: T) {
         let type_id = TypeId::of::<T>();
         self.queued.push((type_id, Box::new(event)));
     }
@@ -362,10 +362,8 @@ mod tests {
     #[test]
     fn test_event_bus_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
-        // This won't compile if EventBus is not Send+Sync
-        // Note: EventBus itself stores Box<dyn Any> in queued which is not Send.
-        // But the handlers are Send+Sync. The bus itself is usable in
-        // single-threaded contexts, and handlers can reference shared state.
+        // This fails to compile if EventBus is not Send+Sync
+        assert_send_sync::<EventBus>();
     }
 
     /// Document that handlers cannot emit events during dispatch (I3/T3)
