@@ -168,7 +168,12 @@ impl Default for InputConfig {
 /// Physics configuration from TOML
 ///
 /// This wraps the core PhysicsConfig. The `gravity` field is passed to the
-/// physics engine. Jump velocity is now per-entity (set by game logic).
+/// physics engine directly.
+///
+/// `jump_velocity` lives here (rather than in a `[game]` section) because it is
+/// a physics-adjacent tunable: users typically adjust it alongside `gravity` to
+/// get the right feel, and both share the same units (m/s vs m/s^2). Game logic
+/// reads it from here and passes it per-entity to `CharacterController4D`.
 ///
 /// Note: `player_radius` is in `[scene]` section. Floor positions are defined
 /// per-scene in .ron files via Hyperplane entities.

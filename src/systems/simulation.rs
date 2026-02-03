@@ -118,7 +118,10 @@ impl SimulationSystem {
             .map(|w| w.has_dirty_entities())
             .unwrap_or(false);
 
-        // 8. Sync camera position to player via character controller
+        // 8. Sync camera position to player body (pre-controller)
+        // This sets the camera to the physics-authoritative position BEFORE the
+        // controller runs, so controller.update() in step 9 computes rotation
+        // deltas from the correct starting position.
         if let (Some(character), Some(physics)) = (character, scene_manager
             .active_world()
             .and_then(|w| w.physics()))
@@ -131,7 +134,10 @@ impl SimulationSystem {
         // 9. Apply mouse look for camera rotation
         controller.update(camera, dt, cursor_captured);
 
-        // 10. Re-sync position after controller (discard its movement, keep rotation)
+        // 10. Re-sync position after controller (keep rotation, discard position drift)
+        // controller.update() in step 9 applies both rotation AND movement. We want
+        // the rotation (mouse look) but not the movement (physics owns position).
+        // Re-syncing here overwrites any position drift the controller introduced.
         if let (Some(character), Some(physics)) = (character, scene_manager
             .active_world()
             .and_then(|w| w.physics()))
