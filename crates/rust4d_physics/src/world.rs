@@ -1,8 +1,8 @@
 //! Physics world and simulation
 
 use crate::body::{BodyKey, RigidBody4D, StaticCollider};
-use crate::collision::{aabb_vs_aabb, aabb_vs_plane, sphere_vs_aabb, sphere_vs_plane, Contact};
-use crate::shapes::{Collider, Sphere4D};
+use crate::collision::{aabb_vs_aabb, aabb_vs_plane, sphere_vs_aabb, sphere_vs_plane, sphere_vs_sphere, Contact};
+use crate::shapes::Collider;
 use rust4d_math::Vec4;
 use slotmap::SlotMap;
 
@@ -238,7 +238,7 @@ impl PhysicsWorld {
             }
             // Body sphere vs static sphere (rare but possible)
             (Collider::Sphere(body_sphere), Collider::Sphere(static_sphere)) => {
-                Self::sphere_vs_sphere(body_sphere, static_sphere)
+                sphere_vs_sphere(body_sphere, static_sphere)
             }
             // Body AABB vs static sphere
             (Collider::AABB(aabb), Collider::Sphere(sphere)) => {
@@ -250,23 +250,6 @@ impl PhysicsWorld {
             }
             // Plane colliders don't move so body can't be a plane
             (Collider::Plane(_), _) => None,
-        }
-    }
-
-    /// Sphere vs sphere collision (returns contact from sphere A toward B)
-    fn sphere_vs_sphere(a: &Sphere4D, b: &Sphere4D) -> Option<Contact> {
-        let delta = b.center - a.center;
-        let dist_sq = delta.length_squared();
-        let min_dist = a.radius + b.radius;
-
-        if dist_sq < min_dist * min_dist && dist_sq > 0.0001 {
-            let dist = dist_sq.sqrt();
-            let penetration = min_dist - dist;
-            let normal = delta.normalized();
-            let point = a.center + normal * a.radius;
-            Some(Contact::new(point, normal, penetration))
-        } else {
-            None
         }
     }
 
@@ -372,7 +355,7 @@ impl PhysicsWorld {
                 // The contact normal convention: points FROM body A TOWARD body B
                 let contact = match (&collider_a, &collider_b) {
                     (Collider::Sphere(a), Collider::Sphere(b)) => {
-                        Self::sphere_vs_sphere(a, b)
+                        sphere_vs_sphere(a, b)
                     }
                     (Collider::Sphere(sphere), Collider::AABB(aabb)) => {
                         // sphere_vs_aabb returns normal pointing from AABB toward sphere

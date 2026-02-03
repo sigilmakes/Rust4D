@@ -343,6 +343,26 @@ pub fn aabb_vs_aabb(a: &AABB4D, b: &AABB4D) -> Option<Contact> {
     Some(Contact::new(point, normal, min_overlap))
 }
 
+/// Test sphere vs sphere collision
+///
+/// Returns a contact if the spheres are intersecting.
+/// The contact normal points from sphere A toward sphere B.
+pub fn sphere_vs_sphere(a: &Sphere4D, b: &Sphere4D) -> Option<Contact> {
+    let delta = b.center - a.center;
+    let dist_sq = delta.length_squared();
+    let min_dist = a.radius + b.radius;
+
+    if dist_sq < min_dist * min_dist && dist_sq > 0.0001 {
+        let dist = dist_sq.sqrt();
+        let penetration = min_dist - dist;
+        let normal = delta.normalized();
+        let point = a.center + normal * a.radius;
+        Some(Contact::new(point, normal, penetration))
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
