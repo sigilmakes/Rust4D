@@ -2681,6 +2681,7 @@ dependencies = [
  "notify",
  "rust4d_core",
  "rust4d_math",
+ "rust4d_physics",
  "tempfile",
 ]
 
