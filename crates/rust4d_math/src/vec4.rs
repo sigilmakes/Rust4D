@@ -140,6 +140,63 @@ impl Vec4 {
     pub fn distance_squared(self, other: Self) -> f32 {
         (self - other).length_squared()
     }
+
+    /// Angle between two vectors in radians.
+    ///
+    /// Returns the angle in the range [0, π]. Both vectors should be
+    /// non-zero; the result is undefined for zero vectors.
+    #[inline]
+    pub fn angle_to(self, other: Self) -> f32 {
+        let cos_angle = self.normalized().dot(other.normalized());
+        // Clamp to [-1, 1] to handle floating point errors
+        cos_angle.clamp(-1.0, 1.0).acos()
+    }
+
+    /// Epsilon for geometric comparisons (parallelism, near-zero length).
+    const GEOMETRIC_EPSILON: f32 = 1e-6;
+
+    /// Rotate `self` towards `target` by at most `max_radians`.
+    ///
+    /// If the angle between `self` and `target` is less than `max_radians`,
+    /// returns `target`. Otherwise, returns a vector rotated from `self`
+    /// towards `target` by exactly `max_radians`.
+    ///
+    /// Both vectors should be normalized for best results.
+    pub fn rotate_towards(self, target: Self, max_radians: f32) -> Self {
+        let min_cos = max_radians.cos();
+        let cos_ang = self.dot(target);
+
+        // Already within max_radians of target
+        if cos_ang >= min_cos {
+            return target;
+        }
+
+        let min_sin = max_radians.sin();
+
+        // Compute perpendicular component (target - projection of target onto self)
+        let mut perp = target - self * cos_ang;
+        let perp_mag = perp.length();
+
+        if perp_mag <= Self::GEOMETRIC_EPSILON {
+            // Vectors are nearly parallel or anti-parallel.
+            // Use the "most orthogonal basis vector" approach: pick the standard
+            // basis axis with the smallest component in self, then orthogonalize.
+            let abs = self.abs();
+            let basis = if abs.x <= abs.y && abs.x <= abs.z && abs.x <= abs.w {
+                Self::X
+            } else if abs.y <= abs.z && abs.y <= abs.w {
+                Self::Y
+            } else if abs.z <= abs.w {
+                Self::Z
+            } else {
+                Self::W
+            };
+            perp = basis - self * self.dot(basis);
+        }
+
+        // Rotate: self * cos(max_radians) + perp_normalized * sin(max_radians)
+        self * min_cos + perp.normalized() * min_sin
+    }
 }
 
 // Operator overloads
@@ -436,5 +493,90 @@ mod tests {
         assert_eq!(scaled.y, 6.0);
         assert_eq!(scaled.z, 9.0);
         assert_eq!(scaled.w, 12.0);
+    }
+
+    #[test]
+    fn test_angle_to_orthogonal() {
+        use std::f32::consts::FRAC_PI_2;
+        let x = Vec4::X;
+        let y = Vec4::Y;
+        let angle = x.angle_to(y);
+        assert!((angle - FRAC_PI_2).abs() < 0.0001, "Orthogonal vectors should have π/2 angle, got {}", angle);
+    }
+
+    #[test]
+    fn test_angle_to_same_direction() {
+        let v = Vec4::new(1.0, 2.0, 3.0, 4.0);
+        let angle = v.angle_to(v);
+        assert!(angle.abs() < 0.0001, "Same direction should have 0 angle, got {}", angle);
+    }
+
+    #[test]
+    fn test_angle_to_opposite() {
+        use std::f32::consts::PI;
+        let v = Vec4::X;
+        let neg_v = -v;
+        let angle = v.angle_to(neg_v);
+        assert!((angle - PI).abs() < 0.0001, "Opposite vectors should have π angle, got {}", angle);
+    }
+
+    #[test]
+    fn test_rotate_towards_within_range() {
+        let from = Vec4::X;
+        let to = Vec4::Y;
+        // Angle between X and Y is π/2. If we allow more than that, should reach target
+        let result = from.rotate_towards(to, 2.0);
+        let dot = result.dot(to);
+        assert!(dot > 0.99, "rotate_towards should reach target when max_radians is large enough");
+    }
+
+    #[test]
+    fn test_rotate_towards_limited() {
+        use std::f32::consts::FRAC_PI_4;
+        let from = Vec4::X;
+        let to = Vec4::Y;
+        // Rotate by π/4, should be halfway between X and Y
+        let result = from.rotate_towards(to, FRAC_PI_4);
+        let angle_from_start = from.angle_to(result);
+        assert!((angle_from_start - FRAC_PI_4).abs() < 0.01,
+            "Should rotate by max_radians, rotated {} instead of {}", angle_from_start, FRAC_PI_4);
+    }
+
+    #[test]
+    fn test_rotate_towards_preserves_length() {
+        let from = Vec4::new(1.0, 0.0, 0.0, 0.0);
+        let to = Vec4::new(0.0, 1.0, 1.0, 1.0).normalized();
+        let result = from.rotate_towards(to, 0.5);
+        let len = result.length();
+        assert!((len - 1.0).abs() < 0.01, "rotate_towards should preserve length, got {}", len);
+    }
+
+    #[test]
+    fn test_rotate_towards_anti_parallel() {
+        // T5: Anti-parallel vectors should produce a valid unit-length result
+        use std::f32::consts::FRAC_PI_4;
+        let from = Vec4::X;
+        let to = -Vec4::X;
+        let result = from.rotate_towards(to, FRAC_PI_4);
+        let len = result.length();
+        assert!((len - 1.0).abs() < 0.01,
+            "rotate_towards anti-parallel should produce unit vector, got length {}", len);
+        // Should have rotated 45° from X toward -X
+        let angle = from.angle_to(result);
+        assert!((angle - FRAC_PI_4).abs() < 0.01,
+            "Should rotate by max_radians, got {}", angle);
+    }
+
+    #[test]
+    fn test_rotate_towards_anti_parallel_all_axes() {
+        // Verify anti-parallel fallback works for all basis directions
+        use std::f32::consts::FRAC_PI_4;
+        let axes = [Vec4::X, Vec4::Y, Vec4::Z, Vec4::W];
+        for axis in &axes {
+            let result = axis.rotate_towards(-*axis, FRAC_PI_4);
+            let len = result.length();
+            assert!((len - 1.0).abs() < 0.01,
+                "Anti-parallel rotate_towards failed for {:?}, length = {}", axis, len);
+        }
     }
 }
