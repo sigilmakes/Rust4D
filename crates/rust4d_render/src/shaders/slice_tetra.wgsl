@@ -63,9 +63,7 @@ struct SliceParams {
     tetrahedron_count: u32,
     _pad0: f32,
     _pad1: f32,
-    camera_matrix: mat4x4<f32>,  // Camera-local to world (needs transpose for view)
-    camera_eye: vec3<f32>,
-    _pad2: f32,
+    camera_matrix: mat4x4<f32>,  // View matrix (world→camera, pre-transformed)
     camera_position: vec4<f32>,  // 4D camera position
 }
 
@@ -144,11 +142,13 @@ const TETRA_TRI_TABLE: array<array<i32, 6>, 16> = array<array<i32, 6>, 16>(
 
 /// Transform a 4D world position to camera space
 /// 1. Translate by -camera_position (move camera to origin)
-/// 2. Rotate by transpose(camera_matrix) (camera_matrix is camera→world, transpose gives world→camera)
-fn transform_to_camera_space(world_pos: vec4<f32>, camera_pos: vec4<f32>, camera_mat: mat4x4<f32>) -> vec4<f32> {
+/// 2. Apply view matrix (world→camera, pre-transformed by CPU with Z row negation)
+///
+/// The view matrix is pre-transposed and Z-negated on the CPU (Engine4D style),
+/// so we use it directly here.
+fn transform_to_camera_space(world_pos: vec4<f32>, camera_pos: vec4<f32>, view_mat: mat4x4<f32>) -> vec4<f32> {
     let relative_pos = world_pos - camera_pos;
-    // camera_mat transforms camera-local to world, so transpose transforms world to camera-local
-    return transpose(camera_mat) * relative_pos;
+    return view_mat * relative_pos;
 }
 
 /// Compute the intersection point on an edge

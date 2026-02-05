@@ -10,7 +10,7 @@ use std::time::Instant;
 use rust4d_core::SceneManager;
 use rust4d_game::CharacterController4D;
 use rust4d_input::CameraController;
-use rust4d_math::Vec4;
+use rust4d_math::{Vec4, mat4};
 use rust4d_render::camera4d::Camera4D;
 
 /// Result of a simulation update
@@ -69,28 +69,49 @@ impl SimulationSystem {
         let (forward_input, right_input) = controller.get_movement_input();
         let w_input = controller.get_w_input();
 
-        // 3. Calculate movement direction in world space using camera orientation
-        let camera_forward = camera.forward();
-        let camera_right = camera.right();
-        let camera_ana = camera.ana();
+        // 3. Update gravity system (smooth gravity transitions)
+        // Pass None for new_gravity_direction since we're not changing it here.
+        // In the future, physics raycasts could provide surface normals.
+        camera.update_gravity(dt, None);
 
-        // Project to XZW hyperplane (zero out Y for horizontal movement)
-        let forward_xzw =
-            Vec4::new(camera_forward.x, 0.0, camera_forward.z, camera_forward.w).normalized();
-        let right_xzw =
-            Vec4::new(camera_right.x, 0.0, camera_right.z, camera_right.w).normalized();
-        let ana_xzw = Vec4::new(camera_ana.x, 0.0, camera_ana.z, camera_ana.w).normalized();
+        // 4. Calculate movement direction using Engine4D approach
+        //
+        // Engine4D's key insight: transform input by camera matrix FIRST, then
+        // remove gravity. This is mathematically different from projecting
+        // forward/right separately and removing ana components.
+        //
+        // Why this works: camera-local (right, 0, -forward, 0) IS the slice plane
+        // by construction. The camera matrix transforms this to world space while
+        // preserving the slice-plane property.
 
-        // Combine movement direction and normalize to prevent faster diagonal movement
-        // Without this, 2-axis movement is ~41% faster and 3-axis is ~73% faster
-        let move_dir = forward_xzw * forward_input + right_xzw * right_input + ana_xzw * w_input;
-        let move_dir = if move_dir.length_squared() > 1.0 {
-            move_dir.normalized()
+        // Build input in camera space: (right, up, -forward, ana)
+        // Note: forward is -Z in camera space (looking down -Z axis)
+        // Validate inputs to prevent NaN/infinity propagation from broken input devices
+        let right_input = if right_input.is_finite() { right_input } else { 0.0 };
+        let forward_input = if forward_input.is_finite() { forward_input } else { 0.0 };
+        let w_input = if w_input.is_finite() { w_input } else { 0.0 };
+
+        let input = Vec4::new(right_input, 0.0, -forward_input, w_input);
+
+        // Transform by camera matrix to world space
+        let mut accel = mat4::transform(camera.camera_matrix(), input);
+
+        // Remove gravity component for horizontal movement
+        // Engine4D style: accel -= gravity * dot(gravity, accel)
+        if camera.use_gravity() {
+            let gravity = camera.smooth_gravity();
+            accel = accel - gravity * accel.dot(gravity);
+        }
+
+        // Normalize to prevent faster diagonal movement, cap magnitude at 1.0
+        let move_dir = if accel.length_squared() > 0.0001 {
+            let len = accel.length().min(1.0);
+            accel.normalized() * len
         } else {
-            move_dir
+            Vec4::ZERO
         };
 
-        // 4. Apply movement to player via character controller
+        // 5. Apply movement to player via character controller
         // The controller owns move_speed, so we just pass the normalized direction
         if let (Some(character), Some(physics)) = (character, scene_manager
             .active_world_mut()
@@ -99,7 +120,7 @@ impl SimulationSystem {
             character.apply_movement(physics, move_dir);
         }
 
-        // 5. Handle jump via character controller
+        // 6. Handle jump via character controller
         if controller.consume_jump() {
             if let (Some(character), Some(physics)) = (character, scene_manager
                 .active_world_mut()
@@ -109,18 +130,18 @@ impl SimulationSystem {
             }
         }
 
-        // 6. Step world physics
+        // 7. Step world physics
         scene_manager.update(dt);
 
-        // 7. Check for dirty entities
+        // 8. Check for dirty entities
         let geometry_dirty = scene_manager
             .active_world()
             .map(|w| w.has_dirty_entities())
             .unwrap_or(false);
 
-        // 8. Sync camera position to player body (pre-controller)
+        // 9. Sync camera position to player body (pre-controller)
         // This sets the camera to the physics-authoritative position BEFORE the
-        // controller runs, so controller.update() in step 9 computes rotation
+        // controller runs, so controller.update() in step 10 computes rotation
         // deltas from the correct starting position.
         if let (Some(character), Some(physics)) = (character, scene_manager
             .active_world()
@@ -131,11 +152,11 @@ impl SimulationSystem {
             }
         }
 
-        // 9. Apply mouse look for camera rotation
+        // 10. Apply mouse look for camera rotation
         controller.update(camera, dt, cursor_captured);
 
-        // 10. Re-sync position after controller (keep rotation, discard position drift)
-        // controller.update() in step 9 applies both rotation AND movement. We want
+        // 11. Re-sync position after controller (keep rotation, discard position drift)
+        // controller.update() in step 10 applies both rotation AND movement. We want
         // the rotation (mouse look) but not the movement (physics owns position).
         // Re-syncing here overwrites any position drift the controller introduced.
         if let (Some(character), Some(physics)) = (character, scene_manager
@@ -160,6 +181,7 @@ impl Default for SimulationSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust4d_math::{Rotor4, RotationPlane};
 
     #[test]
     fn test_delta_time_capped() {
@@ -169,6 +191,161 @@ mod tests {
 
         // Can't fully test without scene manager, but we can verify construction
         assert!(sim.last_frame.elapsed().as_millis() >= 100);
+    }
+
+    /// Test the Engine4D-style movement calculation.
+    ///
+    /// Key invariant: WASD movement (w_input=0) should be orthogonal to the
+    /// camera's ana direction after any 4D rotation.
+    #[test]
+    fn test_wasd_orthogonal_to_ana_after_rotation() {
+        use std::f32::consts::FRAC_PI_4;
+
+        // Simulate a 45° rotation in ZW plane (camera looking "into" 4D)
+        let rotation = Rotor4::from_plane_angle(RotationPlane::ZW, FRAC_PI_4);
+        let rot_matrix = mat4::skip_y(rotation.to_matrix());
+
+        // Get camera's ana direction after rotation
+        let ana = mat4::transform(rot_matrix, Vec4::new(0.0, 0.0, 0.0, 1.0));
+
+        // WASD input: forward only (no w_input)
+        let input = Vec4::new(0.0, 0.0, -1.0, 0.0); // camera-local forward
+
+        // Transform by camera matrix
+        let mut accel = mat4::transform(rot_matrix, input);
+        accel.y = 0.0; // Remove gravity
+
+        // Normalize
+        let move_dir = if accel.length_squared() > 0.0001 {
+            accel.normalized()
+        } else {
+            Vec4::ZERO
+        };
+
+        // Key test: movement should be orthogonal to ana
+        let dot = move_dir.dot(ana);
+        assert!(
+            dot.abs() < 0.0001,
+            "WASD movement should be orthogonal to ana, but dot = {} (move_dir={:?}, ana={:?})",
+            dot, move_dir, ana
+        );
+
+        // Also verify no Y component (horizontal)
+        assert!(
+            move_dir.y.abs() < 0.0001,
+            "WASD movement should be horizontal, got y={}",
+            move_dir.y
+        );
+    }
+
+    /// Test that Q/E movement goes along the ana direction.
+    #[test]
+    fn test_qe_moves_along_ana() {
+        use std::f32::consts::FRAC_PI_4;
+
+        // 45° rotation in ZW plane
+        let rotation = Rotor4::from_plane_angle(RotationPlane::ZW, FRAC_PI_4);
+        let rot_matrix = mat4::skip_y(rotation.to_matrix());
+
+        // Get camera's ana direction
+        let ana = mat4::transform(rot_matrix, Vec4::new(0.0, 0.0, 0.0, 1.0));
+        let ana_xzw = Vec4::new(ana.x, 0.0, ana.z, ana.w).normalized(); // Project to XZW
+
+        // Q/E input: ana only (no WASD)
+        let input = Vec4::new(0.0, 0.0, 0.0, 1.0); // camera-local ana
+
+        // Transform by camera matrix
+        let mut accel = mat4::transform(rot_matrix, input);
+        accel.y = 0.0;
+
+        let move_dir = if accel.length_squared() > 0.0001 {
+            accel.normalized()
+        } else {
+            Vec4::ZERO
+        };
+
+        // Q/E movement should be parallel to ana (high dot product)
+        let dot = move_dir.dot(ana_xzw).abs();
+        assert!(
+            dot > 0.99,
+            "Q/E movement should be along ana direction, but dot = {}",
+            dot
+        );
+    }
+
+    /// Test that the 45° ZW rotation case works correctly.
+    ///
+    /// This is the case that broke the old approach: forward and ana are
+    /// orthogonal but both have W components.
+    #[test]
+    fn test_45deg_zw_rotation_wasd_preserves_slice() {
+        use std::f32::consts::FRAC_PI_4;
+
+        // After 45° ZW rotation:
+        // - forward = (0, 0, -0.707, 0.707)  -- has W component
+        // - ana = (0, 0, 0.707, 0.707)       -- has W component
+        // - forward · ana = 0 (orthogonal!)
+        //
+        // The old approach failed because the dot product was zero even though
+        // forward had a W component that would cause slice drift.
+
+        let rotation = Rotor4::from_plane_angle(RotationPlane::ZW, FRAC_PI_4);
+        let rot_matrix = mat4::skip_y(rotation.to_matrix());
+
+        // Get ana direction (what the slice is perpendicular to)
+        let ana = mat4::transform(rot_matrix, Vec4::new(0.0, 0.0, 0.0, 1.0));
+
+        // Strafe right input
+        let input = Vec4::new(1.0, 0.0, 0.0, 0.0);
+        let mut accel = mat4::transform(rot_matrix, input);
+        accel.y = 0.0;
+
+        let move_dir = if accel.length_squared() > 0.0001 {
+            accel.normalized()
+        } else {
+            Vec4::ZERO
+        };
+
+        // Strafing right should be orthogonal to ana
+        let dot = move_dir.dot(ana);
+        assert!(
+            dot.abs() < 0.0001,
+            "Strafe movement should be orthogonal to ana after 45° ZW rotation, but dot = {}",
+            dot
+        );
+
+        // Right strafe should only have X component (in this rotation state)
+        assert!(
+            move_dir.x.abs() > 0.99,
+            "Right strafe should be along X, got {:?}",
+            move_dir
+        );
+    }
+
+    #[test]
+    fn test_movement_normalized_to_unit() {
+        // Combined movement should cap at magnitude 1.0
+        // Use zero rotation (identity) by rotating by 0 radians
+        let rotation = Rotor4::from_plane_angle(RotationPlane::XY, 0.0);
+        let rot_matrix = mat4::skip_y(rotation.to_matrix());
+
+        // Full diagonal input
+        let input = Vec4::new(1.0, 0.0, -1.0, 1.0);
+        let mut accel = mat4::transform(rot_matrix, input);
+        accel.y = 0.0;
+
+        let move_dir = if accel.length_squared() > 0.0001 {
+            let len = accel.length().min(1.0);
+            accel.normalized() * len
+        } else {
+            Vec4::ZERO
+        };
+
+        assert!(
+            move_dir.length() <= 1.001, // Small tolerance for floating point
+            "Movement magnitude should be capped at 1.0, got {}",
+            move_dir.length()
+        );
     }
 
     #[test]
