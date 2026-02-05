@@ -17,8 +17,17 @@
 //!
 //! This module is owned by Scripting-ECS-Agent.
 
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
 use mlua::prelude::*;
 use rust4d_core::hecs::Entity;
+
+/// Counter for generating incrementing fake entity IDs in stub mode.
+/// This ensures each spawned entity has a unique ID for comparison purposes.
+static STUB_ENTITY_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+/// Track whether we've logged the "ECS not connected" warning.
+static ECS_WARNED: AtomicBool = AtomicBool::new(false);
 
 /// Lua-side entity handle wrapping a hecs::Entity
 ///
@@ -42,21 +51,21 @@ impl LuaUserData for LuaEntity {
         // entity:get(component_name) -> table or nil
         // Stub: Returns nil. Real implementation needs World access.
         methods.add_method("get", |_, this, component: String| {
-            log::debug!("[ecs] entity:get({}) for {:?}", component, this.0);
+            log::trace!("[ecs] entity:get({}) for {:?}", component, this.0);
             Ok(Option::<LuaTable>::None)
         });
 
         // entity:set(component_name, value)
         // Stub: No-op. Real implementation needs World access.
         methods.add_method("set", |_, this, (component, _value): (String, LuaValue)| {
-            log::debug!("[ecs] entity:set({}) for {:?}", component, this.0);
+            log::trace!("[ecs] entity:set({}) for {:?}", component, this.0);
             Ok(())
         });
 
         // entity:is_alive() -> bool
         // Stub: Always returns true. Real implementation needs World access.
         methods.add_method("is_alive", |_, this, ()| {
-            log::debug!("[ecs] entity:is_alive() for {:?}", this.0);
+            log::trace!("[ecs] entity:is_alive() for {:?}", this.0);
             Ok(true)
         });
     }
@@ -88,39 +97,78 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     // world.spawn(components) -> LuaEntity
     // Creates a new entity with the given components.
     //
-    // WARNING: This is a stub implementation that returns Entity::DANGLING.
-    // The returned entity has id() = u32::MAX and is not a real entity in any
-    // hecs::World. Do not store this entity for later use - it will not work
-    // correctly when real ECS integration is added. This stub exists only to
-    // allow scripts to run without errors during development.
+    // # Stub Behavior (MEDIUM-8)
+    //
+    // Returns entities with incrementing fake IDs (starting at 1). While these
+    // are not real hecs::World entities, they have unique IDs allowing proper
+    // entity comparison in scripts. The entity will report id() correctly but
+    // get/set operations are no-ops.
+    //
+    // WARNING: Do not rely on these entities persisting across script reloads
+    // or for actual game logic. This stub exists only to allow scripts to run
+    // without errors during development.
     world_table.set(
         "spawn",
         lua.create_function(|_, components: LuaTable| {
-            let count = components.len().unwrap_or(0);
-            log::warn!(
-                "[ecs] world.spawn() called with {} components - this is a stub that returns \
-                 Entity::DANGLING. Do not store the returned entity for later use.",
-                count
-            );
-
-            // Log component names for debugging
-            for pair in components.pairs::<String, LuaValue>().flatten() {
-                log::debug!("[ecs]   component: {}", pair.0);
+            // Log warning only on first spawn (LOW-6)
+            if !ECS_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[ecs] hecs::World not connected - entity operations are stubs. \
+                     Spawned entities have fake IDs and get/set are no-ops."
+                );
             }
 
-            // Return a DANGLING entity for now
-            // Real implementation would create entity in hecs::World
-            Ok(LuaEntity(Entity::DANGLING))
+            let count = components.len().unwrap_or(0);
+
+            // Log component names at trace level (LOW-6)
+            log::trace!("[ecs] world.spawn() called with {} components", count);
+            for pair in components.pairs::<String, LuaValue>().flatten() {
+                log::trace!("[ecs]   component: {}", pair.0);
+            }
+
+            // Generate incrementing fake entity ID (MEDIUM-8)
+            // This ensures each entity can be compared correctly
+            let fake_id = STUB_ENTITY_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+            // Create a fake Entity with the incrementing ID
+            // hecs Entity bits encoding: high 32 bits = generation (must be non-zero), low 32 bits = id
+            // We use generation 1 for all stub entities
+            let generation: u64 = 1;
+            let entity_bits = (generation << 32) | (fake_id as u64);
+            let entity = Entity::from_bits(entity_bits)
+                .expect("Entity::from_bits should succeed with valid generation");
+
+            Ok(LuaEntity(entity))
         })?,
     )?;
 
     // world.query(component_name) -> iterator function
     // Returns an iterator over entities with the given component.
-    // Stub: Returns an empty iterator.
+    //
+    // # Stub Behavior (LOW-15)
+    //
+    // Returns an empty iterator (a closure that immediately returns nil).
+    // This is correct for stub mode since no entities actually exist.
+    //
+    // # Efficiency Note for Future Implementation
+    //
+    // When implementing real ECS integration, consider:
+    // - The current closure-based iterator pattern works but creates a new
+    //   Lua function per call
+    // - For high-frequency queries, consider caching the iterator function
+    //   or using Lua coroutines for better performance
+    // - The real hecs::World query would need unsafe app_data access and
+    //   proper lifetime management
     world_table.set(
         "query",
         lua.create_function(|lua, component: String| {
-            log::debug!("[ecs] query called for component: {}", component);
+            if !ECS_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[ecs] hecs::World not connected - entity operations are stubs."
+                );
+            }
+
+            log::trace!("[ecs] query called for component: {}", component);
 
             // Return an empty iterator function
             // Real implementation would iterate over hecs::World query results
@@ -137,7 +185,12 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     world_table.set(
         "find_by_name",
         lua.create_function(|_, name: String| {
-            log::debug!("[ecs] find_by_name called: {}", name);
+            if !ECS_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[ecs] hecs::World not connected - entity operations are stubs."
+                );
+            }
+            log::trace!("[ecs] find_by_name called: {}", name);
             // Real implementation would query World for entity with matching Name component
             Ok(Option::<LuaEntity>::None)
         })?,
@@ -150,7 +203,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "despawn",
         lua.create_function(|_, entity: LuaAnyUserData| {
             if let Ok(lua_entity) = entity.borrow::<LuaEntity>() {
-                log::debug!("[ecs] despawn called for entity {:?}", lua_entity.0);
+                log::trace!("[ecs] despawn called for entity {:?}", lua_entity.0);
             }
             Ok(())
         })?,
@@ -162,7 +215,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     world_table.set(
         "entity_count",
         lua.create_function(|_, ()| {
-            log::debug!("[ecs] entity_count called");
+            log::trace!("[ecs] entity_count called");
             Ok(0u64)
         })?,
     )?;
@@ -237,8 +290,8 @@ mod tests {
             )
             .eval()
             .expect("id() should return a number");
-        // DANGLING entity has id u32::MAX
-        assert_eq!(id, u32::MAX as u64);
+        // Stub entities now have incrementing IDs starting from 1
+        assert!(id > 0, "entity id should be positive");
     }
 
     #[test]
@@ -255,8 +308,8 @@ mod tests {
             )
             .eval()
             .expect("to_bits() should return a number");
-        // DANGLING entity has specific bits encoding (very large number)
-        assert!(bits > 0.0, "to_bits() should return non-zero for DANGLING entity");
+        // Stub entities have incrementing IDs so bits will be positive
+        assert!(bits > 0.0, "to_bits() should return non-zero");
     }
 
     #[test]
@@ -366,10 +419,34 @@ mod tests {
     #[test]
     fn test_lua_entity_userdata_debug() {
         // Test that LuaEntity can be created directly and has expected properties
-        let entity = LuaEntity(Entity::DANGLING);
-        // DANGLING entity has id u32::MAX
-        assert_eq!(entity.0.id(), u32::MAX);
+        // hecs Entity bits: high 32 bits = generation (must be non-zero), low 32 bits = id
+        let generation: u64 = 1;
+        let id: u64 = 42;
+        let bits = (generation << 32) | id;
+        let entity = LuaEntity(Entity::from_bits(bits).expect("should create entity from valid bits"));
+        // Entity created with id 42 should have id 42
+        assert_eq!(entity.0.id(), 42);
         // to_bits returns a non-zero value
         assert!(entity.0.to_bits().get() > 0);
+    }
+
+    #[test]
+    fn test_spawned_entities_have_unique_ids() {
+        // Test that multiple spawned entities get unique IDs (MEDIUM-8 fix)
+        let lua = create_lua_with_ecs();
+        lua.load(
+            r#"
+            local e1 = world.spawn({ name = "entity1" })
+            local e2 = world.spawn({ name = "entity2" })
+            local e3 = world.spawn({ name = "entity3" })
+
+            -- Each entity should have a different ID
+            assert(e1:id() ~= e2:id(), "e1 and e2 should have different IDs")
+            assert(e2:id() ~= e3:id(), "e2 and e3 should have different IDs")
+            assert(e1:id() ~= e3:id(), "e1 and e3 should have different IDs")
+        "#,
+        )
+        .exec()
+        .expect("spawned entities should have unique IDs");
     }
 }

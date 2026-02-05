@@ -7,6 +7,13 @@ edition = "2021"
 mlua = { version = "0.10", features = ["lua54", "vendored", "send"] }
 log = "0.4"
 rust4d_core = { path = "../rust4d_core" }
+rust4d_math = { path = "../rust4d_math" }
+rust4d_physics = { path = "../rust4d_physics" }
+notify = { version = "7.0", optional = true }
+
+[features]
+default = []
+hot-reload = ["notify"]
 
 [dev-dependencies]
 env_logger = "0.11"

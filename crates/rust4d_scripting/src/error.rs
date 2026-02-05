@@ -19,6 +19,13 @@ pub enum ScriptError {
         message: String,
         source: Option<Box<ScriptError>>,
     },
+    /// File watcher error (hot-reload)
+    WatcherError(String),
+    /// Module reload failed (old version continues running)
+    ModuleReloadError {
+        path: String,
+        error: mlua::Error,
+    },
 }
 
 impl ScriptError {
@@ -43,6 +50,12 @@ impl std::fmt::Display for ScriptError {
             Self::ReloadError { message, .. } => {
                 write!(f, "Reload error: {}", message)
             }
+            Self::WatcherError(msg) => {
+                write!(f, "File watcher error: {}", msg)
+            }
+            Self::ModuleReloadError { path, error } => {
+                write!(f, "Failed to reload {}: {}", path, error)
+            }
         }
     }
 }
@@ -60,6 +73,7 @@ impl std::error::Error for ScriptError {
             Self::LuaError(e) => Some(e),
             Self::RuntimeError { error, .. } => Some(error),
             Self::ReloadError { source: Some(e), .. } => Some(e.as_ref()),
+            Self::ModuleReloadError { error, .. } => Some(error),
             _ => None,
         }
     }

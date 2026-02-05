@@ -1,0 +1,13 @@
+[package]
+name = "rust4d_audio"
+version = "0.1.0"
+edition = "2021"
+description = "4D spatial audio system for Rust4D engine"
+
+[dependencies]
+rust4d_math = { path = "../rust4d_math" }
+kira = "0.9"
+log = "0.4"
+thiserror = "1.0"
+
+[dev-dependencies]
