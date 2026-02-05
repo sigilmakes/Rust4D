@@ -9,9 +9,11 @@
 //! - `physics` - Physics queries (raycast, sphere query, line of sight)
 //! - `input` - Input polling (keyboard, mouse, actions)
 //! - `audio` - 4D spatial audio playback
+//! - `hud` - HUD/GUI overlay drawing
 
 pub mod audio;
 pub mod ecs;
+pub mod hud;
 pub mod input;
 pub mod math;
 pub mod physics;
@@ -28,11 +30,13 @@ use mlua::{Lua, Result as LuaResult};
 /// - `physics` - Physics queries table
 /// - `input` - Input polling table
 /// - `audio` - Audio playback table
+/// - `hud` - HUD drawing table
 pub fn register_all(lua: &Lua) -> LuaResult<()> {
     ecs::register(lua)?;
     math::register(lua)?;
     physics::register(lua)?;
     input::register(lua)?;
     audio::register(lua)?;
+    hud::register(lua)?;
     Ok(())
 }
