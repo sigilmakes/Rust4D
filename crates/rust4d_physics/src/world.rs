@@ -1,12 +1,36 @@
 //! Physics world and simulation
 
+use std::collections::HashSet;
+
 use crate::body::{BodyKey, RigidBody4D, StaticCollider};
-use crate::collision::{aabb_vs_aabb, aabb_vs_plane, sphere_vs_aabb, sphere_vs_plane, Contact};
+use crate::collision::{
+    aabb_vs_aabb, aabb_vs_plane, sphere_vs_aabb, sphere_vs_plane,
+    CollisionEvent, CollisionEventKind, CollisionLayer, Contact,
+};
+use crate::raycast::{ray_vs_collider, RayHit};
 use crate::shapes::{Collider, Sphere4D};
-use rust4d_math::Vec4;
+use rust4d_math::{Ray4D, Vec4};
 use slotmap::SlotMap;
 
 use serde::{Serialize, Deserialize};
+
+/// What a world raycast hit
+#[derive(Clone, Copy, Debug)]
+pub enum RayTarget {
+    /// A dynamic/kinematic body in the world
+    Body(BodyKey),
+    /// A static collider (by index in static_colliders)
+    Static(usize),
+}
+
+/// Result of a world-level raycast
+#[derive(Clone, Debug)]
+pub struct WorldRayHit {
+    /// The ray hit information (distance, point, normal)
+    pub hit: RayHit,
+    /// What was hit
+    pub target: RayTarget,
+}
 
 /// Configuration for the physics simulation
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,6 +85,10 @@ pub struct PhysicsWorld {
     fixed_dt: f32,
     /// Accumulator for fixed timestep
     accumulator: f32,
+    /// Collision events from the last step
+    collision_events: Vec<CollisionEvent>,
+    /// Active trigger overlaps for enter/exit detection (body_key, trigger_index)
+    active_triggers: HashSet<(BodyKey, usize)>,
 }
 
 impl PhysicsWorld {
@@ -78,6 +106,8 @@ impl PhysicsWorld {
             config,
             fixed_dt,
             accumulator: 0.0,
+            collision_events: Vec::new(),
+            active_triggers: HashSet::new(),
         }
     }
 
@@ -178,6 +208,15 @@ impl PhysicsWorld {
         self.accumulator / self.fixed_dt
     }
 
+    /// Get collision events from the last step, emptying the buffer
+    ///
+    /// Returns all collision events that occurred during physics steps
+    /// since the last drain. Events include body-body collisions,
+    /// body-static collisions, and trigger enter/stay/exit events.
+    pub fn drain_collision_events(&mut self) -> Vec<CollisionEvent> {
+        std::mem::take(&mut self.collision_events)
+    }
+
     /// Step the physics simulation forward by dt seconds
     ///
     /// This performs:
@@ -185,7 +224,11 @@ impl PhysicsWorld {
     /// 2. Velocity integration into position
     /// 3. Static collider collision detection and resolution
     /// 4. Body-body collision detection and resolution
+    /// 5. Trigger overlap detection (enter/stay/exit events)
     pub fn step(&mut self, dt: f32) {
+        // Clear collision events from previous step
+        self.collision_events.clear();
+
         // Reset grounded state for all non-static bodies before collision detection
         for (_, body) in &mut self.bodies {
             if !body.is_static() {
@@ -215,6 +258,9 @@ impl PhysicsWorld {
 
         // Phase 3: Resolve body-body collisions
         self.resolve_body_collisions();
+
+        // Phase 4: Detect trigger overlaps (enter/stay/exit)
+        self.detect_trigger_overlaps();
     }
 
     /// Check for collision between a body collider and a static collider
@@ -275,32 +321,44 @@ impl PhysicsWorld {
         // Threshold for considering a surface as "ground" (normal pointing mostly up)
         const GROUND_NORMAL_THRESHOLD: f32 = 0.7;
 
-        for (_key, body) in &mut self.bodies {
-            if body.is_static() {
+        // Collect body keys first so we can emit events
+        let body_keys: Vec<BodyKey> = self.bodies.keys().collect();
+
+        for key in body_keys {
+            // Get body info needed for collision checks
+            let (is_static, is_kinematic, collider, filter, position) = {
+                let body = &self.bodies[key];
+                (body.is_static(), body.is_kinematic(), body.collider, body.filter, body.position)
+            };
+
+            if is_static {
                 continue;
             }
 
-            for static_col in &self.static_colliders {
+            for (static_index, static_col) in self.static_colliders.iter().enumerate() {
                 // Check if collision layers allow this interaction
-                if !body.filter.collides_with(&static_col.filter) {
+                if !filter.collides_with(&static_col.filter) {
                     continue;
                 }
 
                 // Edge falling detection: if a kinematic body has walked off a bounded
                 // floor (their XZW position is outside the floor's bounds), skip collision
                 // with that floor's edges. This ensures clean falling into the void.
-                if body.is_kinematic() {
+                if is_kinematic {
                     if let Collider::AABB(_) = &static_col.collider {
-                        if !static_col.is_position_over(body.position) {
+                        if !static_col.is_position_over(position) {
                             continue;
                         }
                     }
                 }
 
-                let contact = Self::check_static_collision(&body.collider, &static_col.collider);
+                let contact = Self::check_static_collision(&collider, &static_col.collider);
 
                 if let Some(contact) = contact {
                     if contact.is_colliding() {
+                        // Get mutable body reference for applying corrections
+                        let body = &mut self.bodies[key];
+
                         // Push the body out of the static collider
                         let correction = contact.normal * contact.penetration;
                         body.apply_correction(correction);
@@ -332,11 +390,16 @@ impl PhysicsWorld {
                                               + tangent_velocity * friction_factor;
                             }
                         }
+
+                        // Emit BodyVsStatic collision event
+                        self.collision_events.push(CollisionEvent::new(
+                            CollisionEventKind::BodyVsStatic { body: key, static_index },
+                            Some(contact),
+                        ));
                     }
                 }
             }
         }
-
     }
 
     /// Resolve collisions between bodies
@@ -402,6 +465,12 @@ impl PhysicsWorld {
                 if let Some(contact) = contact {
                     if contact.is_colliding() {
                         self.resolve_body_pair_collision(key_a, key_b, &contact, is_static_a, is_static_b);
+
+                        // Emit BodyVsBody collision event
+                        self.collision_events.push(CollisionEvent::new(
+                            CollisionEventKind::BodyVsBody { body_a: key_a, body_b: key_b },
+                            Some(contact),
+                        ));
                     }
                 }
             }
@@ -506,6 +575,200 @@ impl PhysicsWorld {
                 }
             }
         }
+    }
+
+    /// Detect trigger overlaps and emit enter/stay/exit events
+    ///
+    /// This uses an asymmetric check to fix the trigger bug:
+    /// - The trigger's mask says what it detects
+    /// - The body doesn't need to agree (so players can enter triggers
+    ///   even though CollisionFilter::player() excludes TRIGGER from its mask)
+    fn detect_trigger_overlaps(&mut self) {
+        let mut current_overlaps: HashSet<(BodyKey, usize)> = HashSet::new();
+
+        // Check each non-static body against trigger-tagged static colliders
+        for (key, body) in &self.bodies {
+            if body.is_static() {
+                continue;
+            }
+
+            for (trigger_idx, static_col) in self.static_colliders.iter().enumerate() {
+                // Only check trigger-tagged static colliders
+                if !static_col.filter.layer.contains(CollisionLayer::TRIGGER) {
+                    continue;
+                }
+
+                // ASYMMETRIC check: does trigger's mask include body's layer?
+                // This is the bug fix: triggers detect bodies without requiring
+                // the body's mask to include TRIGGER.
+                if !static_col.filter.mask.intersects(body.filter.layer) {
+                    continue;
+                }
+
+                // Check geometric overlap
+                if let Some(contact) = Self::check_static_collision(&body.collider, &static_col.collider) {
+                    if contact.is_colliding() {
+                        current_overlaps.insert((key, trigger_idx));
+                    }
+                }
+            }
+        }
+
+        // Compare with previous frame for enter/stay/exit
+        // TriggerEnter: in current but not in previous
+        for &(body_key, trigger_idx) in &current_overlaps {
+            if !self.active_triggers.contains(&(body_key, trigger_idx)) {
+                // NEW overlap: TriggerEnter
+                self.collision_events.push(CollisionEvent::new(
+                    CollisionEventKind::TriggerEnter { body: body_key, trigger_index: trigger_idx },
+                    None,
+                ));
+            } else {
+                // Ongoing overlap: TriggerStay
+                self.collision_events.push(CollisionEvent::new(
+                    CollisionEventKind::TriggerStay { body: body_key, trigger_index: trigger_idx },
+                    None,
+                ));
+            }
+        }
+
+        // TriggerExit: in previous but not in current
+        for &(body_key, trigger_idx) in &self.active_triggers {
+            if !current_overlaps.contains(&(body_key, trigger_idx)) {
+                // ENDED overlap: TriggerExit
+                self.collision_events.push(CollisionEvent::new(
+                    CollisionEventKind::TriggerExit { body: body_key, trigger_index: trigger_idx },
+                    None,
+                ));
+            }
+        }
+
+        // Update active triggers for next frame
+        self.active_triggers = current_overlaps;
+    }
+
+    // ====== Raycasting Methods ======
+
+    /// Cast a ray and return all hits sorted by distance
+    ///
+    /// Returns all bodies and static colliders that the ray intersects,
+    /// filtered by layer mask and max distance, sorted nearest to farthest.
+    ///
+    /// # Arguments
+    /// * `ray` - The ray to cast
+    /// * `max_distance` - Maximum distance to check for hits
+    /// * `layer_mask` - Only hit objects whose layer intersects this mask
+    pub fn raycast(
+        &self,
+        ray: &Ray4D,
+        max_distance: f32,
+        layer_mask: CollisionLayer,
+    ) -> Vec<WorldRayHit> {
+        let mut hits = Vec::new();
+
+        // Check bodies
+        for (key, body) in &self.bodies {
+            // Filter by layer
+            if !body.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+
+            // Get world-space collider
+            let collider = body.collider.translated(Vec4::ZERO); // Already in world space
+
+            if let Some(hit) = ray_vs_collider(ray, &collider) {
+                if hit.distance <= max_distance {
+                    hits.push(WorldRayHit {
+                        hit,
+                        target: RayTarget::Body(key),
+                    });
+                }
+            }
+        }
+
+        // Check static colliders
+        for (index, static_col) in self.static_colliders.iter().enumerate() {
+            // Filter by layer
+            if !static_col.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+
+            if let Some(hit) = ray_vs_collider(ray, &static_col.collider) {
+                if hit.distance <= max_distance {
+                    hits.push(WorldRayHit {
+                        hit,
+                        target: RayTarget::Static(index),
+                    });
+                }
+            }
+        }
+
+        // Sort by distance (nearest first)
+        hits.sort_by(|a, b| {
+            a.hit
+                .distance
+                .partial_cmp(&b.hit.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        hits
+    }
+
+    /// Cast a ray and return only the nearest hit
+    ///
+    /// This is optimized to avoid allocation and sorting by tracking the
+    /// best hit during iteration.
+    ///
+    /// # Arguments
+    /// * `ray` - The ray to cast
+    /// * `max_distance` - Maximum distance to check for hits
+    /// * `layer_mask` - Only hit objects whose layer intersects this mask
+    pub fn raycast_nearest(
+        &self,
+        ray: &Ray4D,
+        max_distance: f32,
+        layer_mask: CollisionLayer,
+    ) -> Option<WorldRayHit> {
+        let mut best: Option<WorldRayHit> = None;
+        let mut best_dist = max_distance;
+
+        // Check bodies
+        for (key, body) in &self.bodies {
+            // Filter by layer
+            if !body.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+
+            if let Some(hit) = ray_vs_collider(ray, &body.collider) {
+                if hit.distance < best_dist {
+                    best_dist = hit.distance;
+                    best = Some(WorldRayHit {
+                        hit,
+                        target: RayTarget::Body(key),
+                    });
+                }
+            }
+        }
+
+        // Check static colliders
+        for (index, static_col) in self.static_colliders.iter().enumerate() {
+            // Filter by layer
+            if !static_col.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+
+            if let Some(hit) = ray_vs_collider(ray, &static_col.collider) {
+                if hit.distance < best_dist {
+                    best_dist = hit.distance;
+                    best = Some(WorldRayHit {
+                        hit,
+                        target: RayTarget::Static(index),
+                    });
+                }
+            }
+        }
+
+        best
     }
 }
 
@@ -1552,5 +1815,229 @@ mod tests {
 
         let body = world.get_body(key).unwrap();
         assert!((body.velocity.y - (-2.0)).abs() < 0.0001);
+    }
+
+    // ====== Raycasting Tests ======
+
+    #[test]
+    fn test_raycast_hit_body() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a sphere at the origin
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 1.0);
+        let key = world.add_body(body);
+
+        // Cast a ray toward the sphere
+        let ray = Ray4D::new(Vec4::new(-5.0, 0.0, 0.0, 0.0), Vec4::X);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
+
+        assert_eq!(hits.len(), 1);
+        match hits[0].target {
+            RayTarget::Body(k) => assert_eq!(k, key),
+            RayTarget::Static(_) => panic!("Expected body hit"),
+        }
+        // Hit should be at x = -1 (distance = 4 from -5)
+        assert!((hits[0].hit.distance - 4.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_raycast_hit_static() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a floor at y=0
+        world.add_static_collider(StaticCollider::floor(0.0, PhysicsMaterial::CONCRETE));
+
+        // Cast a ray downward
+        let ray = Ray4D::new(Vec4::new(0.0, 5.0, 0.0, 0.0), -Vec4::Y);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
+
+        assert_eq!(hits.len(), 1);
+        match hits[0].target {
+            RayTarget::Static(idx) => assert_eq!(idx, 0),
+            RayTarget::Body(_) => panic!("Expected static hit"),
+        }
+        // Hit should be at distance 5
+        assert!((hits[0].hit.distance - 5.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_raycast_miss_all() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a sphere at the origin
+        let _body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 1.0);
+        world.add_body(_body);
+
+        // Cast a ray that misses
+        let ray = Ray4D::new(Vec4::new(0.0, 10.0, 0.0, 0.0), Vec4::X);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
+
+        assert_eq!(hits.len(), 0);
+    }
+
+    #[test]
+    fn test_raycast_layer_filtering() {
+        use crate::collision::CollisionFilter;
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a player sphere
+        let player = RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 1.0)
+            .with_filter(CollisionFilter::player());
+        world.add_body(player);
+
+        // Add an enemy sphere further away
+        let enemy = RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 1.0)
+            .with_filter(CollisionFilter::enemy());
+        world.add_body(enemy);
+
+        // Cast a ray that only hits enemies
+        let ray = Ray4D::new(Vec4::new(-10.0, 0.0, 0.0, 0.0), Vec4::X);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ENEMY);
+
+        // Should only hit enemy
+        assert_eq!(hits.len(), 1);
+        assert!((hits[0].hit.distance - 14.0).abs() < 0.01); // Hit at x=4 from -10
+
+        // Cast a ray that only hits players
+        let player_hits = world.raycast(&ray, 100.0, CollisionLayer::PLAYER);
+        assert_eq!(player_hits.len(), 1);
+        assert!((player_hits[0].hit.distance - 9.0).abs() < 0.01); // Hit at x=-1 from -10
+    }
+
+    #[test]
+    fn test_raycast_max_distance_cutoff() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a sphere 10 units away
+        let body = RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 1.0);
+        world.add_body(body);
+
+        // Cast a ray with short max distance
+        let ray = Ray4D::new(Vec4::new(0.0, 0.0, 0.0, 0.0), Vec4::X);
+        let hits = world.raycast(&ray, 5.0, CollisionLayer::ALL);
+
+        // Should miss because hit is at distance 9
+        assert_eq!(hits.len(), 0);
+
+        // Cast again with longer distance
+        let hits = world.raycast(&ray, 20.0, CollisionLayer::ALL);
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn test_raycast_multiple_hits_sorted() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add multiple spheres at different distances
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 1.0));
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 1.0));
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(15.0, 0.0, 0.0, 0.0), 1.0));
+
+        let ray = Ray4D::new(Vec4::new(0.0, 0.0, 0.0, 0.0), Vec4::X);
+        let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
+
+        assert_eq!(hits.len(), 3);
+
+        // Verify sorted by distance (nearest first)
+        assert!(hits[0].hit.distance < hits[1].hit.distance);
+        assert!(hits[1].hit.distance < hits[2].hit.distance);
+
+        // First hit should be the sphere at x=5 (distance = 4)
+        assert!((hits[0].hit.distance - 4.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_raycast_nearest_returns_closest() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add multiple spheres
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 1.0));
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 1.0));
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(15.0, 0.0, 0.0, 0.0), 1.0));
+
+        let ray = Ray4D::new(Vec4::new(0.0, 0.0, 0.0, 0.0), Vec4::X);
+        let hit = world.raycast_nearest(&ray, 100.0, CollisionLayer::ALL);
+
+        assert!(hit.is_some());
+        let hit = hit.unwrap();
+        // Should return the closest hit (sphere at x=5)
+        assert!((hit.hit.distance - 4.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_raycast_nearest_returns_none_on_miss() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a sphere
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 1.0));
+
+        // Cast a ray that misses
+        let ray = Ray4D::new(Vec4::new(0.0, 10.0, 0.0, 0.0), Vec4::X);
+        let hit = world.raycast_nearest(&ray, 100.0, CollisionLayer::ALL);
+
+        assert!(hit.is_none());
+    }
+
+    #[test]
+    fn test_raycast_nearest_respects_max_distance() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a sphere 10 units away
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 1.0));
+
+        let ray = Ray4D::new(Vec4::new(0.0, 0.0, 0.0, 0.0), Vec4::X);
+
+        // Short distance: miss
+        let hit = world.raycast_nearest(&ray, 5.0, CollisionLayer::ALL);
+        assert!(hit.is_none());
+
+        // Long distance: hit
+        let hit = world.raycast_nearest(&ray, 20.0, CollisionLayer::ALL);
+        assert!(hit.is_some());
+    }
+
+    #[test]
+    fn test_raycast_body_vs_static_priority() {
+        use rust4d_math::Ray4D;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a sphere closer than the floor
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(0.0, 3.0, 0.0, 0.0), 1.0));
+
+        // Add a floor at y=0
+        world.add_static_collider(StaticCollider::floor(0.0, PhysicsMaterial::CONCRETE));
+
+        // Cast a ray downward from above
+        let ray = Ray4D::new(Vec4::new(0.0, 10.0, 0.0, 0.0), -Vec4::Y);
+        let hit = world.raycast_nearest(&ray, 100.0, CollisionLayer::ALL);
+
+        assert!(hit.is_some());
+        let hit = hit.unwrap();
+
+        // Should hit the sphere first (at y=4, distance=6) not the floor (at y=0, distance=10)
+        match hit.target {
+            RayTarget::Body(_) => {} // Expected
+            RayTarget::Static(_) => panic!("Should hit body first, not static"),
+        }
+        assert!((hit.hit.distance - 6.0).abs() < 0.01);
     }
 }

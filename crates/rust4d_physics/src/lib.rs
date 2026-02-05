@@ -22,4 +22,4 @@ pub use collision::{
 pub use material::PhysicsMaterial;
 pub use raycast::{ray_vs_aabb, ray_vs_collider, ray_vs_plane, ray_vs_sphere, RayHit};
 pub use shapes::{Collider, Plane4D, Sphere4D, AABB4D};
-pub use world::{PhysicsConfig, PhysicsWorld};
+pub use world::{PhysicsConfig, PhysicsWorld, RayTarget, WorldRayHit};
