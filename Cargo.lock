@@ -1719,6 +1719,7 @@ dependencies = [
  "env_logger",
  "log",
  "mlua",
+ "rust4d_core",
  "tempfile",
 ]
 

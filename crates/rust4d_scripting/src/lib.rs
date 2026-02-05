@@ -29,6 +29,7 @@
 //! engine.call_shutdown().unwrap();
 //! ```
 
+pub mod bindings;
 pub mod error;
 pub mod lifecycle;
 pub mod loader;

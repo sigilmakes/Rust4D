@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 mlua = { version = "0.10", features = ["lua54", "vendored", "send"] }
 log = "0.4"
+rust4d_core = { path = "../rust4d_core" }
 
 [dev-dependencies]
 env_logger = "0.11"
