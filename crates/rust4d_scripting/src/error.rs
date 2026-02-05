@@ -14,6 +14,21 @@ pub enum ScriptError {
         callback: String,
         error: mlua::Error,
     },
+    /// Error during hot-reload
+    ReloadError {
+        message: String,
+        source: Option<Box<ScriptError>>,
+    },
+}
+
+impl ScriptError {
+    /// Create a reload error with optional source
+    pub fn reload(message: impl Into<String>, source: Option<ScriptError>) -> Self {
+        ScriptError::ReloadError {
+            message: message.into(),
+            source: source.map(Box::new),
+        }
+    }
 }
 
 impl std::fmt::Display for ScriptError {
@@ -24,6 +39,9 @@ impl std::fmt::Display for ScriptError {
             Self::LuaError(e) => write!(f, "Lua error: {}", e),
             Self::RuntimeError { callback, error } => {
                 write!(f, "Error in {}(): {}", callback, error)
+            }
+            Self::ReloadError { message, .. } => {
+                write!(f, "Reload error: {}", message)
             }
         }
     }
@@ -41,6 +59,7 @@ impl std::error::Error for ScriptError {
             Self::IoError(_, e) => Some(e),
             Self::LuaError(e) => Some(e),
             Self::RuntimeError { error, .. } => Some(error),
+            Self::ReloadError { source: Some(e), .. } => Some(e.as_ref()),
             _ => None,
         }
     }

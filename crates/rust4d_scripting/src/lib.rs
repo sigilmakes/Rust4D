@@ -132,6 +132,41 @@ impl ScriptEngine {
     pub fn config(&self) -> &ScriptConfig {
         &self.config
     }
+
+    /// Check if a lifecycle callback exists without calling it
+    pub fn has_callback(&self, name: &str) -> bool {
+        lifecycle::has_callback(&self.lua, name)
+    }
+
+    /// Execute arbitrary Lua code and return result as string (for debugging/REPL)
+    ///
+    /// This evaluates the given Lua code and returns a string representation
+    /// of the result. Useful for debug consoles and interactive tools.
+    pub fn eval(&self, code: &str) -> Result<String, ScriptError> {
+        let result: LuaValue = self.lua.load(code).eval()?;
+        Ok(format_lua_value(&result))
+    }
+}
+
+/// Format a Lua value for display
+fn format_lua_value(value: &LuaValue) -> String {
+    match value {
+        LuaValue::Nil => "nil".to_string(),
+        LuaValue::Boolean(b) => b.to_string(),
+        LuaValue::Integer(i) => i.to_string(),
+        LuaValue::Number(n) => n.to_string(),
+        LuaValue::String(s) => s
+            .to_str()
+            .map(|s| format!("\"{}\"", s))
+            .unwrap_or_else(|_| "<invalid string>".to_string()),
+        LuaValue::Table(_) => "table".to_string(),
+        LuaValue::Function(_) => "function".to_string(),
+        LuaValue::Thread(_) => "thread".to_string(),
+        LuaValue::UserData(_) => "userdata".to_string(),
+        LuaValue::LightUserData(_) => "lightuserdata".to_string(),
+        LuaValue::Error(e) => format!("error: {}", e),
+        _ => "unknown".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -346,5 +381,75 @@ mod tests {
         let mut engine = ScriptEngine::new(config).unwrap();
         engine.load_game().unwrap();
         engine.call_init().unwrap(); // Should not error
+    }
+
+    #[test]
+    fn test_eval_returns_integer() {
+        let (_dir, config) = create_game_dir();
+        let engine = ScriptEngine::new(config).unwrap();
+        let result = engine.eval("return 42").unwrap();
+        assert_eq!(result, "42");
+    }
+
+    #[test]
+    fn test_eval_returns_string() {
+        let (_dir, config) = create_game_dir();
+        let engine = ScriptEngine::new(config).unwrap();
+        let result = engine.eval("return 'hello'").unwrap();
+        assert_eq!(result, "\"hello\"");
+    }
+
+    #[test]
+    fn test_eval_returns_nil() {
+        let (_dir, config) = create_game_dir();
+        let engine = ScriptEngine::new(config).unwrap();
+        let result = engine.eval("return nil").unwrap();
+        assert_eq!(result, "nil");
+    }
+
+    #[test]
+    fn test_eval_returns_boolean() {
+        let (_dir, config) = create_game_dir();
+        let engine = ScriptEngine::new(config).unwrap();
+        assert_eq!(engine.eval("return true").unwrap(), "true");
+        assert_eq!(engine.eval("return false").unwrap(), "false");
+    }
+
+    #[test]
+    fn test_eval_returns_table() {
+        let (_dir, config) = create_game_dir();
+        let engine = ScriptEngine::new(config).unwrap();
+        let result = engine.eval("return {1, 2, 3}").unwrap();
+        assert_eq!(result, "table");
+    }
+
+    #[test]
+    fn test_eval_error_on_invalid_code() {
+        let (_dir, config) = create_game_dir();
+        let engine = ScriptEngine::new(config).unwrap();
+        let result = engine.eval("this is not valid lua");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_has_callback_true_when_exists() {
+        let (dir, config) = create_game_dir();
+        let main_path = dir.path().join("main.lua");
+        std::fs::write(&main_path, "function on_init() end").unwrap();
+
+        let mut engine = ScriptEngine::new(config).unwrap();
+        engine.load_game().unwrap();
+        assert!(engine.has_callback("on_init"));
+    }
+
+    #[test]
+    fn test_has_callback_false_when_missing() {
+        let (dir, config) = create_game_dir();
+        let main_path = dir.path().join("main.lua");
+        std::fs::write(&main_path, "-- no callbacks").unwrap();
+
+        let mut engine = ScriptEngine::new(config).unwrap();
+        engine.load_game().unwrap();
+        assert!(!engine.has_callback("on_init"));
     }
 }

@@ -3,6 +3,14 @@
 use mlua::prelude::*;
 use crate::error::ScriptError;
 
+/// Check if a callback function exists without calling it
+pub fn has_callback(lua: &Lua, callback_name: &str) -> bool {
+    lua.globals()
+        .get::<LuaValue>(callback_name)
+        .map(|v| matches!(v, LuaValue::Function(_)))
+        .unwrap_or(false)
+}
+
 /// Call a global Lua lifecycle function if it exists, silently ignoring missing functions.
 ///
 /// If the function exists, it is called with the provided arguments.
@@ -98,5 +106,27 @@ mod tests {
 
         let result = call_lifecycle(&lua, "on_init", ());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_has_callback_true_when_exists() {
+        let lua = test_lua();
+        lua.load("function on_init() end").exec().unwrap();
+
+        assert!(has_callback(&lua, "on_init"));
+    }
+
+    #[test]
+    fn test_has_callback_false_when_missing() {
+        let lua = test_lua();
+        assert!(!has_callback(&lua, "on_init"));
+    }
+
+    #[test]
+    fn test_has_callback_false_for_non_function() {
+        let lua = test_lua();
+        lua.load("on_init = 42").exec().unwrap();
+
+        assert!(!has_callback(&lua, "on_init"));
     }
 }

@@ -27,6 +27,16 @@ impl Default for ScriptConfig {
     }
 }
 
+impl ScriptConfig {
+    /// Create config with a specific scripts directory
+    pub fn with_scripts_dir(dir: impl Into<String>) -> Self {
+        Self {
+            scripts_dir: dir.into(),
+            ..Default::default()
+        }
+    }
+}
+
 /// Initialize a Lua VM with engine configuration.
 ///
 /// The VM is sandboxed: dangerous globals and libraries are removed.
@@ -121,9 +131,25 @@ pub fn create_lua_vm(config: &ScriptConfig) -> Result<Lua, ScriptError> {
     Ok(lua)
 }
 
+/// Check if a global exists in the Lua VM (test utility)
+#[cfg(test)]
+pub fn has_global(lua: &Lua, name: &str) -> LuaResult<bool> {
+    let globals = lua.globals();
+    let value: LuaValue = globals.get(name)?;
+    Ok(!matches!(value, LuaNil))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_with_scripts_dir() {
+        let config = ScriptConfig::with_scripts_dir("/custom/path");
+        assert_eq!(config.scripts_dir, "/custom/path");
+        // Other fields should be defaults
+        assert_eq!(config.memory_limit, 64 * 1024 * 1024);
+    }
 
     #[test]
     fn test_vm_creates_with_default_config() {
@@ -181,5 +207,21 @@ mod tests {
             .eval()
             .unwrap();
         assert!(path.contains("/tmp/test_scripts/?.lua"));
+    }
+
+    #[test]
+    fn test_has_global_true_for_existing() {
+        let config = ScriptConfig::default();
+        let lua = create_lua_vm(&config).unwrap();
+        // math should exist
+        assert!(has_global(&lua, "math").unwrap());
+    }
+
+    #[test]
+    fn test_has_global_false_for_sandboxed() {
+        let config = ScriptConfig::default();
+        let lua = create_lua_vm(&config).unwrap();
+        // os should be sandboxed (nil)
+        assert!(!has_global(&lua, "os").unwrap());
     }
 }
