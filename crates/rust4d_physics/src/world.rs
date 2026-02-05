@@ -2040,4 +2040,392 @@ mod tests {
         }
         assert!((hit.hit.distance - 6.0).abs() < 0.01);
     }
+
+    // ====== Collision Event Tests ======
+
+    #[test]
+    fn test_body_vs_body_event_emitted() {
+        use crate::collision::CollisionEventKind;
+
+        // No gravity to simplify
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Two spheres that overlap
+        let sphere1 = RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 0.5);
+        let key1 = world.add_body(sphere1);
+
+        let sphere2 = RigidBody4D::new_sphere(Vec4::new(0.8, 0.0, 0.0, 0.0), 0.5);
+        let key2 = world.add_body(sphere2);
+
+        // Step to detect collision
+        world.step(0.016);
+
+        let events = world.drain_collision_events();
+        let body_events: Vec<_> = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::BodyVsBody { .. }))
+            .collect();
+
+        assert_eq!(body_events.len(), 1, "Should have one BodyVsBody event");
+        if let CollisionEventKind::BodyVsBody { body_a, body_b } = body_events[0].kind {
+            assert!(
+                (body_a == key1 && body_b == key2) || (body_a == key2 && body_b == key1),
+                "Event should involve both bodies"
+            );
+        }
+        assert!(body_events[0].contact.is_some(), "BodyVsBody should have contact info");
+    }
+
+    #[test]
+    fn test_body_vs_static_event_emitted() {
+        use crate::collision::CollisionEventKind;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a floor
+        world.add_static_collider(StaticCollider::floor(0.0, PhysicsMaterial::CONCRETE));
+
+        // Add a sphere penetrating the floor
+        let body = RigidBody4D::new_sphere(Vec4::new(0.0, 0.3, 0.0, 0.0), 0.5)
+            .with_velocity(Vec4::new(0.0, -1.0, 0.0, 0.0));
+        let key = world.add_body(body);
+
+        world.step(0.016);
+
+        let events = world.drain_collision_events();
+        let static_events: Vec<_> = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::BodyVsStatic { .. }))
+            .collect();
+
+        assert_eq!(static_events.len(), 1, "Should have one BodyVsStatic event");
+        if let CollisionEventKind::BodyVsStatic { body, static_index } = static_events[0].kind {
+            assert_eq!(body, key, "Event should reference correct body");
+            assert_eq!(static_index, 0, "Event should reference floor at index 0");
+        }
+        assert!(static_events[0].contact.is_some(), "BodyVsStatic should have contact info");
+    }
+
+    #[test]
+    fn test_trigger_detects_player_with_asymmetric_check() {
+        // This tests the bug fix: triggers should detect players even though
+        // CollisionFilter::player() excludes TRIGGER from its mask
+        use crate::collision::{CollisionFilter, CollisionEventKind};
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Create a trigger zone that detects players
+        // floor_bounded creates AABB with top surface at y=0 (and goes down)
+        let trigger = StaticCollider::floor_bounded(0.0, 2.0, 2.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER));
+        world.add_static_collider(trigger);
+
+        // Create a player body INSIDE the trigger zone (sphere bottom at y=-0.6, which is inside)
+        let player = RigidBody4D::new_sphere(Vec4::new(0.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::player())
+            .with_gravity(false);
+        let player_key = world.add_body(player);
+
+        // Step should detect trigger overlap
+        world.step(0.016);
+
+        let events = world.drain_collision_events();
+        let trigger_events: Vec<_> = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::TriggerEnter { .. }))
+            .collect();
+
+        assert_eq!(trigger_events.len(), 1, "Trigger should detect player (bug fix validation)");
+        if let CollisionEventKind::TriggerEnter { body, trigger_index } = trigger_events[0].kind {
+            assert_eq!(body, player_key, "Event should reference player");
+            assert_eq!(trigger_index, 0, "Event should reference trigger at index 0");
+        }
+    }
+
+    #[test]
+    fn test_trigger_does_not_apply_physics_response() {
+        use crate::collision::CollisionFilter;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Create a trigger zone that detects players
+        // floor_bounded creates AABB with top surface at y=0 (and goes down)
+        let trigger = StaticCollider::floor_bounded(0.0, 2.0, 2.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER));
+        world.add_static_collider(trigger);
+
+        // Create a player body moving into the trigger zone
+        // Start inside trigger zone (y=-0.1, bottom at y=-0.6 which is inside)
+        let initial_velocity = Vec4::new(0.0, -5.0, 0.0, 0.0);
+        let player = RigidBody4D::new_sphere(Vec4::new(0.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::player())
+            .with_velocity(initial_velocity)
+            .with_gravity(false);
+        let player_key = world.add_body(player);
+
+        // Step physics
+        world.step(0.016);
+
+        // Player should NOT have been pushed (triggers don't apply physics response)
+        // The player's velocity should continue downward
+        let body = world.get_body(player_key).unwrap();
+        assert!(
+            body.velocity.y < 0.0,
+            "Player should continue falling through trigger (no physics response)"
+        );
+    }
+
+    #[test]
+    fn test_trigger_enter_only_on_first_frame() {
+        use crate::collision::{CollisionFilter, CollisionEventKind};
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        let trigger = StaticCollider::floor_bounded(0.0, 2.0, 2.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER));
+        world.add_static_collider(trigger);
+
+        // Sphere inside trigger zone (y=-0.1, bottom at y=-0.6)
+        let player = RigidBody4D::new_sphere(Vec4::new(0.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::player())
+            .with_gravity(false);
+        world.add_body(player);
+
+        // First step: TriggerEnter
+        world.step(0.016);
+        let events = world.drain_collision_events();
+        let enter_count = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::TriggerEnter { .. }))
+            .count();
+        assert_eq!(enter_count, 1, "First frame should have TriggerEnter");
+
+        // Second step: TriggerStay, NOT TriggerEnter
+        world.step(0.016);
+        let events = world.drain_collision_events();
+        let enter_count = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::TriggerEnter { .. }))
+            .count();
+        let stay_count = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::TriggerStay { .. }))
+            .count();
+        assert_eq!(enter_count, 0, "Second frame should NOT have TriggerEnter");
+        assert_eq!(stay_count, 1, "Second frame should have TriggerStay");
+    }
+
+    #[test]
+    fn test_trigger_stay_on_subsequent_frames() {
+        use crate::collision::{CollisionFilter, CollisionEventKind};
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        let trigger = StaticCollider::floor_bounded(0.0, 2.0, 2.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER));
+        world.add_static_collider(trigger);
+
+        // Sphere inside trigger zone (y=-0.1, bottom at y=-0.6)
+        let player = RigidBody4D::new_sphere(Vec4::new(0.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::player())
+            .with_gravity(false);
+        world.add_body(player);
+
+        // First step to enter
+        world.step(0.016);
+        world.drain_collision_events();
+
+        // Multiple subsequent steps should all have TriggerStay
+        for i in 0..3 {
+            world.step(0.016);
+            let events = world.drain_collision_events();
+            let stay_count = events.iter()
+                .filter(|e| matches!(e.kind, CollisionEventKind::TriggerStay { .. }))
+                .count();
+            assert_eq!(stay_count, 1, "Frame {} should have TriggerStay", i + 2);
+        }
+    }
+
+    #[test]
+    fn test_trigger_exit_when_body_leaves() {
+        use crate::collision::{CollisionFilter, CollisionEventKind};
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        let trigger = StaticCollider::floor_bounded(0.0, 2.0, 2.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER));
+        world.add_static_collider(trigger);
+
+        // Player starts inside trigger zone (y=-0.1, bottom at y=-0.6)
+        let player = RigidBody4D::new_sphere(Vec4::new(0.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::player())
+            .with_velocity(Vec4::new(10.0, 0.0, 0.0, 0.0)) // Moving out quickly
+            .with_gravity(false);
+        let player_key = world.add_body(player);
+
+        // First step: TriggerEnter
+        world.step(0.016);
+        world.drain_collision_events();
+
+        // Move player far outside trigger (manually for test clarity)
+        {
+            let body = world.get_body_mut(player_key).unwrap();
+            body.position.x = 10.0;
+            body.collider = body.collider.translated(Vec4::new(10.0, 0.0, 0.0, 0.0));
+        }
+
+        // Next step: TriggerExit
+        world.step(0.016);
+        let events = world.drain_collision_events();
+        let exit_count = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::TriggerExit { .. }))
+            .count();
+        assert_eq!(exit_count, 1, "Should have TriggerExit when body leaves");
+
+        if let Some(event) = events.iter().find(|e| matches!(e.kind, CollisionEventKind::TriggerExit { .. })) {
+            if let CollisionEventKind::TriggerExit { body, trigger_index } = event.kind {
+                assert_eq!(body, player_key);
+                assert_eq!(trigger_index, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn test_trigger_layer_filtering() {
+        use crate::collision::{CollisionFilter, CollisionEventKind};
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Trigger that ONLY detects PLAYER layer
+        let trigger = StaticCollider::floor_bounded(0.0, 2.0, 2.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER));
+        world.add_static_collider(trigger);
+
+        // Enemy body (not PLAYER layer) inside trigger zone (y=-0.1, bottom at y=-0.6)
+        let enemy = RigidBody4D::new_sphere(Vec4::new(0.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::enemy())
+            .with_gravity(false);
+        world.add_body(enemy);
+
+        world.step(0.016);
+
+        let events = world.drain_collision_events();
+        let trigger_events: Vec<_> = events.iter()
+            .filter(|e| matches!(e.kind,
+                CollisionEventKind::TriggerEnter { .. } |
+                CollisionEventKind::TriggerStay { .. } |
+                CollisionEventKind::TriggerExit { .. }
+            ))
+            .collect();
+
+        assert_eq!(trigger_events.len(), 0, "Trigger should NOT detect enemy (only configured for PLAYER)");
+    }
+
+    #[test]
+    fn test_multiple_bodies_in_same_trigger() {
+        use crate::collision::{CollisionFilter, CollisionEventKind};
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Trigger that detects both PLAYER and ENEMY
+        let trigger = StaticCollider::floor_bounded(0.0, 5.0, 5.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER | CollisionLayer::ENEMY));
+        world.add_static_collider(trigger);
+
+        // Add player and enemy both inside trigger zone (y=-0.1, bottom at y=-0.6)
+        let player = RigidBody4D::new_sphere(Vec4::new(-1.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::player())
+            .with_gravity(false);
+        world.add_body(player);
+
+        let enemy = RigidBody4D::new_sphere(Vec4::new(1.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::enemy())
+            .with_gravity(false);
+        world.add_body(enemy);
+
+        world.step(0.016);
+
+        let events = world.drain_collision_events();
+        let enter_events: Vec<_> = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::TriggerEnter { .. }))
+            .collect();
+
+        assert_eq!(enter_events.len(), 2, "Both bodies should trigger enter events");
+    }
+
+    #[test]
+    fn test_single_body_in_multiple_triggers() {
+        use crate::collision::{CollisionFilter, CollisionEventKind};
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Two overlapping trigger zones
+        let trigger1 = StaticCollider::floor_bounded(0.0, 3.0, 3.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER));
+        world.add_static_collider(trigger1);
+
+        let trigger2 = StaticCollider::floor_bounded(0.0, 3.0, 3.0, 1.0, PhysicsMaterial::CONCRETE)
+            .with_filter(CollisionFilter::trigger(CollisionLayer::PLAYER));
+        world.add_static_collider(trigger2);
+
+        // Player inside both triggers (y=-0.1, bottom at y=-0.6)
+        let player = RigidBody4D::new_sphere(Vec4::new(0.0, -0.1, 0.0, 0.0), 0.5)
+            .with_filter(CollisionFilter::player())
+            .with_gravity(false);
+        world.add_body(player);
+
+        world.step(0.016);
+
+        let events = world.drain_collision_events();
+        let enter_events: Vec<_> = events.iter()
+            .filter(|e| matches!(e.kind, CollisionEventKind::TriggerEnter { .. }))
+            .collect();
+
+        assert_eq!(enter_events.len(), 2, "Body should have enter events for both triggers");
+
+        // Verify different trigger indices
+        let indices: Vec<usize> = enter_events.iter()
+            .filter_map(|e| {
+                if let CollisionEventKind::TriggerEnter { trigger_index, .. } = e.kind {
+                    Some(trigger_index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(indices.contains(&0) && indices.contains(&1), "Events should reference both triggers");
+    }
+
+    #[test]
+    fn test_drain_collision_events_empties_buffer() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Two overlapping spheres
+        let sphere1 = RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 0.5);
+        world.add_body(sphere1);
+
+        let sphere2 = RigidBody4D::new_sphere(Vec4::new(0.8, 0.0, 0.0, 0.0), 0.5);
+        world.add_body(sphere2);
+
+        world.step(0.016);
+
+        // First drain gets events
+        let events = world.drain_collision_events();
+        assert!(!events.is_empty(), "First drain should have events");
+
+        // Second drain without step gets nothing
+        let events2 = world.drain_collision_events();
+        assert!(events2.is_empty(), "Second drain should be empty (buffer was emptied)");
+    }
+
+    #[test]
+    fn test_drain_twice_returns_empty_on_second_call() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add colliding bodies
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 0.5));
+        world.add_body(RigidBody4D::new_sphere(Vec4::new(0.8, 0.0, 0.0, 0.0), 0.5));
+
+        world.step(0.016);
+
+        let first = world.drain_collision_events();
+        let second = world.drain_collision_events();
+
+        assert!(!first.is_empty());
+        assert!(second.is_empty(), "Calling drain twice without step should return empty vec");
+    }
 }
