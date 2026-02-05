@@ -128,6 +128,18 @@ impl Vec4 {
             self.w * other.w,
         )
     }
+
+    /// Euclidean distance between two points
+    #[inline]
+    pub fn distance(self, other: Self) -> f32 {
+        (self - other).length()
+    }
+
+    /// Squared Euclidean distance (avoids sqrt)
+    #[inline]
+    pub fn distance_squared(self, other: Self) -> f32 {
+        (self - other).length_squared()
+    }
 }
 
 // Operator overloads
@@ -219,6 +231,15 @@ impl std::ops::Div<f32> for Vec4 {
             self.z / scalar,
             self.w / scalar,
         )
+    }
+}
+
+// Commutative multiplication: f32 * Vec4
+impl std::ops::Mul<Vec4> for f32 {
+    type Output = Vec4;
+    #[inline]
+    fn mul(self, v: Vec4) -> Vec4 {
+        v * self
     }
 }
 
@@ -367,5 +388,44 @@ mod tests {
         let b = Vec4::new(2.0, 3.0, 4.0, 5.0);
         let result = a.component_mul(b);
         assert_eq!(result, Vec4::new(2.0, 6.0, 12.0, 20.0));
+    }
+
+    #[test]
+    fn test_distance() {
+        let a = Vec4::new(0.0, 0.0, 0.0, 0.0);
+        let b = Vec4::new(3.0, 0.0, 0.0, 0.0);
+        assert_eq!(a.distance(b), 3.0);
+
+        // Test with multiple components
+        let c = Vec4::new(1.0, 1.0, 1.0, 1.0);
+        let d = Vec4::new(2.0, 2.0, 2.0, 2.0);
+        // Distance = sqrt(1 + 1 + 1 + 1) = 2.0
+        assert!((c.distance(d) - 2.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_distance_squared() {
+        let a = Vec4::new(0.0, 0.0, 0.0, 0.0);
+        let b = Vec4::new(3.0, 0.0, 0.0, 0.0);
+        assert_eq!(a.distance_squared(b), 9.0);
+
+        // Test with multiple components
+        let c = Vec4::new(1.0, 1.0, 1.0, 1.0);
+        let d = Vec4::new(2.0, 2.0, 2.0, 2.0);
+        // Distance squared = 1 + 1 + 1 + 1 = 4.0
+        assert_eq!(c.distance_squared(d), 4.0);
+    }
+
+    #[test]
+    fn test_scalar_mul_commutative() {
+        let v = Vec4::new(1.0, 2.0, 3.0, 4.0);
+        let s = 2.5;
+
+        // Both orderings should produce the same result
+        let result1 = v * s;
+        let result2 = s * v;
+
+        assert_eq!(result1, result2);
+        assert_eq!(result1, Vec4::new(2.5, 5.0, 7.5, 10.0));
     }
 }

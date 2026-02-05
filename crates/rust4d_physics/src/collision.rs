@@ -133,6 +133,64 @@ impl CollisionFilter {
     }
 }
 
+// ===== Collision Events =====
+
+/// A collision event from a physics step
+#[derive(Clone, Debug)]
+pub struct CollisionEvent {
+    /// The kind of collision that occurred
+    pub kind: CollisionEventKind,
+    /// Contact information (None for TriggerExit when bodies separated)
+    pub contact: Option<Contact>,
+}
+
+impl CollisionEvent {
+    /// Create a new collision event
+    pub fn new(kind: CollisionEventKind, contact: Option<Contact>) -> Self {
+        Self { kind, contact }
+    }
+}
+
+/// The type of collision event
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CollisionEventKind {
+    /// Two bodies collided (physics response applied)
+    BodyVsBody {
+        /// First body in the collision
+        body_a: crate::body::BodyKey,
+        /// Second body in the collision
+        body_b: crate::body::BodyKey,
+    },
+    /// A body hit a static collider (physics response applied)
+    BodyVsStatic {
+        /// The dynamic/kinematic body
+        body: crate::body::BodyKey,
+        /// Index of the static collider in PhysicsWorld::static_colliders
+        static_index: usize,
+    },
+    /// A body entered a trigger zone this frame
+    TriggerEnter {
+        /// The body that entered the trigger
+        body: crate::body::BodyKey,
+        /// Index of the trigger in PhysicsWorld::static_colliders
+        trigger_index: usize,
+    },
+    /// A body is inside a trigger zone (ongoing)
+    TriggerStay {
+        /// The body inside the trigger
+        body: crate::body::BodyKey,
+        /// Index of the trigger in PhysicsWorld::static_colliders
+        trigger_index: usize,
+    },
+    /// A body exited a trigger zone this frame
+    TriggerExit {
+        /// The body that exited the trigger
+        body: crate::body::BodyKey,
+        /// Index of the trigger in PhysicsWorld::static_colliders
+        trigger_index: usize,
+    },
+}
+
 /// Contact information from a collision
 #[derive(Clone, Copy, Debug)]
 pub struct Contact {
@@ -612,5 +670,130 @@ mod tests {
         );
         assert!(aabb_vs_aabb(&tesseract_slightly_in, &floor).is_some(),
             "Tesseract slightly below resting position should collide");
+    }
+
+    // ===== Collision Event Tests =====
+
+    #[test]
+    fn test_collision_event_constructs_correctly() {
+        use crate::body::BodyKey;
+        use slotmap::SlotMap;
+
+        let mut map: SlotMap<BodyKey, ()> = SlotMap::with_key();
+        let key_a = map.insert(());
+        let key_b = map.insert(());
+
+        let event = CollisionEvent::new(
+            CollisionEventKind::BodyVsBody { body_a: key_a, body_b: key_b },
+            Some(Contact::new(Vec4::ZERO, Vec4::Y, 0.5)),
+        );
+
+        assert!(event.contact.is_some());
+        assert_eq!(event.contact.unwrap().penetration, 0.5);
+    }
+
+    #[test]
+    fn test_collision_event_kind_body_vs_body() {
+        use crate::body::BodyKey;
+        use slotmap::SlotMap;
+
+        let mut map: SlotMap<BodyKey, ()> = SlotMap::with_key();
+        let key_a = map.insert(());
+        let key_b = map.insert(());
+
+        let kind = CollisionEventKind::BodyVsBody { body_a: key_a, body_b: key_b };
+        let kind2 = CollisionEventKind::BodyVsBody { body_a: key_a, body_b: key_b };
+
+        assert_eq!(kind, kind2);
+    }
+
+    #[test]
+    fn test_collision_event_kind_body_vs_static() {
+        use crate::body::BodyKey;
+        use slotmap::SlotMap;
+
+        let mut map: SlotMap<BodyKey, ()> = SlotMap::with_key();
+        let key = map.insert(());
+
+        let kind = CollisionEventKind::BodyVsStatic { body: key, static_index: 0 };
+        let kind2 = CollisionEventKind::BodyVsStatic { body: key, static_index: 0 };
+
+        assert_eq!(kind, kind2);
+    }
+
+    #[test]
+    fn test_collision_event_kind_trigger_enter() {
+        use crate::body::BodyKey;
+        use slotmap::SlotMap;
+
+        let mut map: SlotMap<BodyKey, ()> = SlotMap::with_key();
+        let key = map.insert(());
+
+        let kind = CollisionEventKind::TriggerEnter { body: key, trigger_index: 2 };
+        let kind2 = CollisionEventKind::TriggerEnter { body: key, trigger_index: 2 };
+
+        assert_eq!(kind, kind2);
+    }
+
+    #[test]
+    fn test_collision_event_kind_trigger_stay() {
+        use crate::body::BodyKey;
+        use slotmap::SlotMap;
+
+        let mut map: SlotMap<BodyKey, ()> = SlotMap::with_key();
+        let key = map.insert(());
+
+        let kind = CollisionEventKind::TriggerStay { body: key, trigger_index: 1 };
+        let kind2 = CollisionEventKind::TriggerStay { body: key, trigger_index: 1 };
+
+        assert_eq!(kind, kind2);
+    }
+
+    #[test]
+    fn test_collision_event_kind_trigger_exit() {
+        use crate::body::BodyKey;
+        use slotmap::SlotMap;
+
+        let mut map: SlotMap<BodyKey, ()> = SlotMap::with_key();
+        let key = map.insert(());
+
+        let kind = CollisionEventKind::TriggerExit { body: key, trigger_index: 0 };
+        let kind2 = CollisionEventKind::TriggerExit { body: key, trigger_index: 0 };
+
+        assert_eq!(kind, kind2);
+    }
+
+    #[test]
+    fn test_collision_event_kind_inequality() {
+        use crate::body::BodyKey;
+        use slotmap::SlotMap;
+
+        let mut map: SlotMap<BodyKey, ()> = SlotMap::with_key();
+        let key = map.insert(());
+
+        let trigger_enter = CollisionEventKind::TriggerEnter { body: key, trigger_index: 0 };
+        let trigger_stay = CollisionEventKind::TriggerStay { body: key, trigger_index: 0 };
+        let trigger_exit = CollisionEventKind::TriggerExit { body: key, trigger_index: 0 };
+
+        assert_ne!(trigger_enter, trigger_stay);
+        assert_ne!(trigger_stay, trigger_exit);
+        assert_ne!(trigger_enter, trigger_exit);
+    }
+
+    #[test]
+    fn test_collision_event_without_contact() {
+        use crate::body::BodyKey;
+        use slotmap::SlotMap;
+
+        let mut map: SlotMap<BodyKey, ()> = SlotMap::with_key();
+        let key = map.insert(());
+
+        // TriggerExit typically has no contact (bodies separated)
+        let event = CollisionEvent::new(
+            CollisionEventKind::TriggerExit { body: key, trigger_index: 0 },
+            None,
+        );
+
+        assert!(event.contact.is_none());
     }
 }
