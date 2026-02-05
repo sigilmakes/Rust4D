@@ -77,6 +77,11 @@ impl From<mlua::Error> for ScriptError {
 
         match &err {
             mlua::Error::RuntimeError(_) | mlua::Error::CallbackError { .. } => {
+                // The "unknown" callback name is intentional here. This From impl
+                // is used as a fallback when the caller doesn't have callback context
+                // (e.g., errors during script loading rather than callback execution).
+                // For errors with known callback context, use ScriptError::runtime()
+                // which accepts an explicit callback name.
                 ScriptError::RuntimeError {
                     callback: "unknown".to_string(),
                     message,

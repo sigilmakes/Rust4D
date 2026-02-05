@@ -72,9 +72,25 @@ impl CollisionFilter {
     /// Check if this filter allows collision with another filter
     ///
     /// Returns true if both objects' layers match each other's masks.
+    /// This is a **symmetric** check - both sides must agree.
     pub fn collides_with(&self, other: &Self) -> bool {
         // Both must agree on the collision
         self.layer.intersects(other.mask) && other.layer.intersects(self.mask)
+    }
+
+    /// Check if this filter detects the other's layer (asymmetric)
+    ///
+    /// Returns true if `other`'s layer is in this filter's mask.
+    /// Unlike `collides_with()`, this is a **one-way** check.
+    ///
+    /// Use this for trigger detection where triggers need to detect bodies
+    /// but bodies shouldn't push triggers. For example:
+    /// - Trigger mask includes PLAYER layer
+    /// - Player mask does NOT include TRIGGER layer
+    /// - `trigger.detects(&player)` returns true (trigger sees player)
+    /// - `player.detects(&trigger)` returns false (player ignores trigger)
+    pub fn detects(&self, other: &Self) -> bool {
+        self.mask.intersects(other.layer)
     }
 
     /// Create a filter for player objects

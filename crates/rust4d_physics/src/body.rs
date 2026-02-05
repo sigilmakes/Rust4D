@@ -225,6 +225,17 @@ pub struct StaticCollider {
     pub filter: CollisionFilter,
 }
 
+/// Minimum floor thickness to prevent tunneling at typical fall speeds.
+///
+/// At gravity -20 and fixed_dt 1/60, terminal velocity after many frames
+/// approaches ~0.33 units per frame. A thickness of 5.0 units provides
+/// approximately 15x safety margin against tunneling.
+///
+/// This also ensures the Y overlap in AABB collision is small relative to
+/// X/Z overlaps, so collision resolution correctly pushes objects upward
+/// rather than sideways.
+const MIN_FLOOR_THICKNESS: f32 = 5.0;
+
 impl StaticCollider {
     /// Create a new static collider with the given shape and material
     pub fn new(collider: Collider, material: PhysicsMaterial) -> Self {
@@ -262,13 +273,13 @@ impl StaticCollider {
     /// - `y`: Y height of floor surface (top of AABB)
     /// - `half_size_xz`: Half-extent in X and Z dimensions
     /// - `half_size_w`: Half-extent in W dimension
-    /// - `thickness`: Thickness in Y (minimum 5.0 enforced to prevent tunneling)
+    /// - `thickness`: Thickness in Y (minimum [`MIN_FLOOR_THICKNESS`] enforced)
     /// - `material`: Physics material for friction and restitution
     ///
     /// # Anti-tunneling
-    /// The floor uses a minimum thickness of 5.0 units to prevent fast-moving objects
-    /// from passing through while keeping the Y overlap small enough that collision
-    /// resolution correctly pushes objects upward.
+    /// The floor uses a minimum thickness to prevent fast-moving objects from
+    /// passing through while keeping the Y overlap small enough that collision
+    /// resolution correctly pushes objects upward. See [`MIN_FLOOR_THICKNESS`].
     pub fn floor_bounded(
         y: f32,
         half_size_xz: f32,
@@ -280,7 +291,7 @@ impl StaticCollider {
 
         // Use reasonable thickness - enough to prevent tunneling but not so thick
         // that Y overlap equals X/Z overlap (which breaks collision axis selection)
-        let actual_thickness = thickness.max(5.0);
+        let actual_thickness = thickness.max(MIN_FLOOR_THICKNESS);
         let half_thickness = actual_thickness / 2.0;
 
         // Position AABB so top surface is at y

@@ -162,37 +162,29 @@ pub fn ray_vs_aabb(ray: &Ray4D, aabb: &AABB4D) -> Option<RayHit> {
         let to_min = point - aabb.min;
         let to_max = aabb.max - point;
 
-        let mut min_dist = to_min.x;
-        let mut normal = -Vec4::X;
+        // Distance to each face (min face, max face) for each axis
+        let distances = [
+            to_min.x, to_max.x,
+            to_min.y, to_max.y,
+            to_min.z, to_max.z,
+            to_min.w, to_max.w,
+        ];
+        // Corresponding outward normals
+        let normals = [
+            -Vec4::X, Vec4::X,
+            -Vec4::Y, Vec4::Y,
+            -Vec4::Z, Vec4::Z,
+            -Vec4::W, Vec4::W,
+        ];
 
-        if to_max.x < min_dist {
-            min_dist = to_max.x;
-            normal = Vec4::X;
-        }
-        if to_min.y < min_dist {
-            min_dist = to_min.y;
-            normal = -Vec4::Y;
-        }
-        if to_max.y < min_dist {
-            min_dist = to_max.y;
-            normal = Vec4::Y;
-        }
-        if to_min.z < min_dist {
-            min_dist = to_min.z;
-            normal = -Vec4::Z;
-        }
-        if to_max.z < min_dist {
-            min_dist = to_max.z;
-            normal = Vec4::Z;
-        }
-        if to_min.w < min_dist {
-            min_dist = to_min.w;
-            normal = -Vec4::W;
-        }
-        if to_max.w < min_dist {
-            normal = Vec4::W;
-        }
-        normal
+        // Find the face with minimum distance (closest exit)
+        let (min_idx, _) = distances
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap();
+
+        normals[min_idx]
     };
 
     let point = ray.point_at(t);
