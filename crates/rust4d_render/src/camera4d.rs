@@ -423,15 +423,10 @@ impl Camera4D {
 
     /// Get the pre-transformed view matrix (world-to-camera) for the GPU shader.
     ///
-    /// Applies the Engine4D-style transformation:
-    /// 1. Transpose (camera→world becomes world→camera)
-    /// 2. Negate Z row (Engine4D shader convention)
-    ///
+    /// Transposes the camera matrix (camera→world becomes world→camera).
     /// The shader can use this matrix directly without any internal transpose.
     pub fn view_matrix(&self) -> [[f32; 4]; 4] {
-        let mut m = mat4::transpose(self.camera_matrix());
-        mat4::negate_row(&mut m, 2);
-        m
+        mat4::transpose(self.camera_matrix())
     }
 }
 
