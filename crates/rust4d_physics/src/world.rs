@@ -86,6 +86,10 @@ pub struct PhysicsWorld {
     /// Accumulator for fixed timestep
     accumulator: f32,
     /// Collision events from the last step
+    ///
+    /// Note: This Vec grows unbounded with many collisions per step. For production
+    /// use with high collision counts, consider pre-allocating a capacity estimate
+    /// or using a ring buffer to bound memory usage.
     collision_events: Vec<CollisionEvent>,
     /// Active trigger overlaps for enter/exit detection (body_key, trigger_index)
     active_triggers: HashSet<(BodyKey, usize)>,
@@ -670,10 +674,18 @@ impl PhysicsWorld {
     /// Returns all bodies and static colliders that the ray intersects,
     /// filtered by layer mask and max distance, sorted nearest to farthest.
     ///
+    /// # Performance
+    ///
+    /// This method allocates a Vec and sorts all hits (O(n log n)).
+    /// If you only need the nearest hit, use [`raycast_nearest()`] which is
+    /// O(n) with no allocation.
+    ///
     /// # Arguments
     /// * `ray` - The ray to cast
     /// * `max_distance` - Maximum distance to check for hits
     /// * `layer_mask` - Only hit objects whose layer intersects this mask
+    ///
+    /// [`raycast_nearest()`]: Self::raycast_nearest
     pub fn raycast(
         &self,
         ray: &Ray4D,
