@@ -239,8 +239,7 @@ pub fn scale(s: Vec4) -> Mat4 {
 /// The algorithm:
 /// 1. Normalize each column
 /// 2. Remove mutual projections between columns
-pub fn ortho_iterate(m: Mat4) -> Mat4 {
-    let mut m = m;
+pub fn ortho_iterate(mut m: Mat4) -> Mat4 {
 
     // Normalize columns
     for i in 0..4 {
@@ -255,7 +254,7 @@ pub fn ortho_iterate(m: Mat4) -> Mat4 {
     // Compute M^T * M (gives dot products between columns)
     let mt = mul(transpose(m), m);
 
-    // Remove mutual projections
+    // Remove mutual projections and re-normalize
     let mut result = IDENTITY;
     for i in 0..4 {
         let mut sum = get_column(m, i);
@@ -265,7 +264,8 @@ pub fn ortho_iterate(m: Mat4) -> Mat4 {
                 sum = sum + col_j * (-0.5 * mt[i][j]);
             }
         }
-        set_column(&mut result, i, sum);
+        // Re-normalize after projection removal to ensure unit-length columns
+        set_column(&mut result, i, sum.normalized());
     }
 
     result
@@ -273,8 +273,8 @@ pub fn ortho_iterate(m: Mat4) -> Mat4 {
 
 /// Create a rotation matrix that rotates `from` direction to `to` direction.
 ///
-/// Both vectors should be normalized. Uses the Householder reflection method:
-/// Two reflections compose to a rotation.
+/// Vectors are normalized internally for robustness. Uses the Householder
+/// reflection method: two reflections compose to a rotation.
 ///
 /// For anti-parallel vectors (180° rotation), uses a two-step rotation through
 /// a perpendicular intermediate axis to avoid numerical instability.
@@ -287,6 +287,10 @@ pub fn from_to_rotation(from: Vec4, to: Vec4) -> Mat4 {
     if mag_sq < GEOMETRIC_EPSILON {
         // Vectors are nearly anti-parallel. The Householder method becomes unstable
         // when from + to ≈ 0. Use two-step rotation through a perpendicular axis.
+        //
+        // SAFETY: find_perpendicular returns a vector orthogonal to `from`, so
+        // (from + perp).length_squared() ≈ 2.0, always >> GEOMETRIC_EPSILON.
+        // Recursion depth is therefore at most 1.
         let perp = find_perpendicular(from);
         let r1 = from_to_rotation(from, perp);
         let r2 = from_to_rotation(perp, to);
@@ -306,26 +310,9 @@ pub fn from_to_rotation(from: Vec4, to: Vec4) -> Mat4 {
 }
 
 /// Find a unit vector perpendicular to the given vector.
-///
-/// Uses the "most orthogonal basis vector" approach: picks the standard basis
-/// axis with the smallest component in `v`, then Gram-Schmidt orthogonalizes.
+/// Delegates to `Vec4::find_perpendicular`.
 fn find_perpendicular(v: Vec4) -> Vec4 {
-    let abs = v.abs();
-
-    // Pick the axis where v has the smallest component (most orthogonal)
-    let basis = if abs.x <= abs.y && abs.x <= abs.z && abs.x <= abs.w {
-        Vec4::X
-    } else if abs.y <= abs.z && abs.y <= abs.w {
-        Vec4::Y
-    } else if abs.z <= abs.w {
-        Vec4::Z
-    } else {
-        Vec4::W
-    };
-
-    // Gram-Schmidt: remove the component along v
-    let perp = basis - v * v.dot(basis);
-    perp.normalized()
+    v.find_perpendicular()
 }
 
 #[cfg(test)]
@@ -654,6 +641,37 @@ mod tests {
         let result = transform(m, from);
         assert!(vec_approx_eq(result, to),
             "180° diagonal rotation failed: got {:?}, expected {:?}", result, to);
+    }
+
+    /// Compute determinant of a 4x4 matrix using cofactor expansion
+    fn determinant(m: Mat4) -> f32 {
+        let a = m[0][0]; let b = m[1][0]; let c = m[2][0]; let d = m[3][0];
+        let e = m[0][1]; let f = m[1][1]; let g = m[2][1]; let h = m[3][1];
+        let i = m[0][2]; let j = m[1][2]; let k = m[2][2]; let l = m[3][2];
+        let mm = m[0][3]; let n = m[1][3]; let o = m[2][3]; let p = m[3][3];
+
+        a * (f*(k*p - l*o) - g*(j*p - l*n) + h*(j*o - k*n))
+       -b * (e*(k*p - l*o) - g*(i*p - l*mm) + h*(i*o - k*mm))
+       +c * (e*(j*p - l*n) - f*(i*p - l*mm) + h*(i*n - j*mm))
+       -d * (e*(j*o - k*n) - f*(i*o - k*mm) + g*(i*n - j*mm))
+    }
+
+    #[test]
+    fn test_from_to_rotation_is_proper_rotation() {
+        // T1 from review: verify det = +1 (proper rotation, not reflection)
+        let cases: Vec<(Vec4, Vec4)> = vec![
+            (Vec4::X, Vec4::Y),
+            (Vec4::X, -Vec4::X),   // anti-parallel
+            (Vec4::Y, -Vec4::Y),
+            (Vec4::new(1.0, 1.0, 1.0, 1.0).normalized(),
+             Vec4::new(-1.0, -1.0, -1.0, -1.0).normalized()),
+        ];
+        for (from, to) in &cases {
+            let m = from_to_rotation(*from, *to);
+            let det = determinant(m);
+            assert!((det - 1.0).abs() < 0.01,
+                "from_to_rotation({:?}, {:?}) should have det=1, got {}", from, to, det);
+        }
     }
 
     #[test]

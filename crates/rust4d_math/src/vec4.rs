@@ -155,6 +155,27 @@ impl Vec4 {
     /// Epsilon for geometric comparisons (parallelism, near-zero length).
     const GEOMETRIC_EPSILON: f32 = 1e-6;
 
+    /// Find a unit vector perpendicular to `self`.
+    ///
+    /// Uses the "most orthogonal basis vector" approach: picks the standard basis
+    /// axis with the smallest component in `self`, then Gram-Schmidt orthogonalizes.
+    /// The input vector should be non-zero; for zero vectors the result is undefined.
+    pub fn find_perpendicular(self) -> Self {
+        let abs = self.abs();
+        let basis = if abs.x <= abs.y && abs.x <= abs.z && abs.x <= abs.w {
+            Self::X
+        } else if abs.y <= abs.z && abs.y <= abs.w {
+            Self::Y
+        } else if abs.z <= abs.w {
+            Self::Z
+        } else {
+            Self::W
+        };
+        // Gram-Schmidt: remove the component along self
+        let perp = basis - self * self.dot(basis);
+        perp.normalized()
+    }
+
     /// Rotate `self` towards `target` by at most `max_radians`.
     ///
     /// If the angle between `self` and `target` is less than `max_radians`,
@@ -179,19 +200,8 @@ impl Vec4 {
 
         if perp_mag <= Self::GEOMETRIC_EPSILON {
             // Vectors are nearly parallel or anti-parallel.
-            // Use the "most orthogonal basis vector" approach: pick the standard
-            // basis axis with the smallest component in self, then orthogonalize.
-            let abs = self.abs();
-            let basis = if abs.x <= abs.y && abs.x <= abs.z && abs.x <= abs.w {
-                Self::X
-            } else if abs.y <= abs.z && abs.y <= abs.w {
-                Self::Y
-            } else if abs.z <= abs.w {
-                Self::Z
-            } else {
-                Self::W
-            };
-            perp = basis - self * self.dot(basis);
+            // Use find_perpendicular for a robust fallback direction.
+            perp = self.find_perpendicular();
         }
 
         // Rotate: self * cos(max_radians) + perp_normalized * sin(max_radians)
