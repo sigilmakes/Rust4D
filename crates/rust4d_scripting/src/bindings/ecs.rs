@@ -104,10 +104,8 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
             );
 
             // Log component names for debugging
-            for pair in components.pairs::<String, LuaValue>() {
-                if let Ok((key, _)) = pair {
-                    log::debug!("[ecs]   component: {}", key);
-                }
+            for pair in components.pairs::<String, LuaValue>().flatten() {
+                log::debug!("[ecs]   component: {}", pair.0);
             }
 
             // Return a DANGLING entity for now
