@@ -10,6 +10,9 @@
 //! - [`pipeline::SlicePipeline`] - Compute shader for 4D->3D slicing
 //! - [`pipeline::RenderPipeline`] - 3D rendering with lighting
 //! - [`renderable::RenderableGeometry`] - Converts World/Entity to GPU buffers
+//! - [`sprite::SpriteBatch`] - 2D billboard sprites in 4D space with W-fade
+//! - [`particle::ParticleSystem`] - 4D particle effects with physics
+//! - [`egui_overlay::EguiRenderer`] - 2D HUD overlay with egui
 //!
 //! ## Shapes
 //!
@@ -20,6 +23,9 @@ pub mod context;
 pub mod camera4d;
 pub mod pipeline;
 pub mod renderable;
+pub mod sprite;
+pub mod particle;
+pub mod egui_overlay;
 
 // Re-export core types for convenience
 pub use rust4d_core::{World, Transform4D, Material, ShapeRef, DirtyFlags, Tags};
@@ -28,3 +34,12 @@ pub use rust4d_core::{Vec4, Rotor4, RotationPlane};
 
 // Re-export renderable for easy access
 pub use renderable::{RenderableGeometry, CheckerboardGeometry, position_gradient_color};
+
+// Re-export sprite types for easy access
+pub use sprite::{Sprite, SpriteSheet, SpriteBatch, WFadeConfig};
+
+// Re-export particle types for easy access
+pub use particle::{Particle, BlendMode, BurstConfig, EmitterConfig, ParticleEmitter, ParticleSystem};
+
+// Re-export egui overlay types for easy access
+pub use egui_overlay::{EguiRenderer, HudContext, ScreenDescriptor, RawInput};

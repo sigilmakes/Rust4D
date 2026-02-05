@@ -11,3 +11,12 @@ wgpu.workspace = true
 winit.workspace = true
 bytemuck.workspace = true
 log.workspace = true
+
+# egui for HUD overlay
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = { version = "0.31", optional = true }
+
+[features]
+default = []
+egui-winit = ["dep:egui-winit"]
