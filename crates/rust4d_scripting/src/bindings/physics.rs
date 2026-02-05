@@ -51,6 +51,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use mlua::prelude::*;
+use rust4d_physics::PhysicsConfig;
 
 use super::math::LuaVec4;
 
@@ -379,28 +380,30 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
 
     // physics.gravity() -> Vec4
     //
-    // Get the current gravity vector.
+    // Get the current gravity vector from PhysicsConfig.
     //
-    // # Stub Behavior (LOW-16)
-    //
-    // Returns hardcoded default gravity (0, -20, 0, 0), NOT the actual physics
-    // config value. When PhysicsWorld is properly connected, this will return
-    // the configured gravity from PhysicsConfig. The default of -20 on Y is
-    // stronger than Earth gravity (~9.8) for snappier game feel.
+    // Returns the configured gravity as a Vec4 (0, gravity_y, 0, 0).
+    // If PhysicsConfig is not set via app_data, returns the default (-20 on Y).
     physics_table.set(
         "gravity",
-        lua.create_function(|_, ()| {
-            if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
-                log::warn!(
-                    "[physics] PhysicsWorld not connected - all physics queries will return \
-                     empty/stub results."
-                );
-            }
+        lua.create_function(|lua, ()| {
+            // Try to get PhysicsConfig from app_data
+            let gravity_y = if let Some(config) = lua.app_data_ref::<PhysicsConfig>() {
+                log::trace!("[physics] gravity() - returning configured value: {}", config.gravity);
+                config.gravity
+            } else {
+                // No config set - use default and warn once
+                if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
+                    log::warn!(
+                        "[physics] PhysicsConfig not set via app_data - using default gravity. \
+                         Call lua.set_app_data(physics_config) to configure."
+                    );
+                }
+                log::trace!("[physics] gravity() - no config, using default: -20.0");
+                PhysicsConfig::default().gravity
+            };
 
-            log::trace!("[physics] gravity() called - returning hardcoded default (0, -20, 0, 0)");
-            // STUB: Return default gravity (not actual config value)
-            // Real implementation would get from PhysicsConfig
-            Ok(LuaVec4(rust4d_math::Vec4::new(0.0, -20.0, 0.0, 0.0)))
+            Ok(LuaVec4(rust4d_math::Vec4::new(0.0, gravity_y, 0.0, 0.0)))
         })?,
     )?;
 
@@ -597,5 +600,58 @@ mod tests {
         )
         .exec()
         .expect("stub markers should be present on physics query results");
+    }
+
+    #[test]
+    fn test_gravity_reads_from_config() {
+        let lua = Lua::new();
+
+        // Set up a custom PhysicsConfig with non-default gravity
+        let mut config = PhysicsConfig::default();
+        config.gravity = -9.81; // Earth gravity instead of default -20
+        lua.set_app_data(config);
+
+        // Register bindings
+        math::register(&lua).unwrap();
+        register(&lua).unwrap();
+
+        // Verify gravity reads from config
+        let y: f32 = lua
+            .load(
+                r#"
+            local g = physics.gravity()
+            return g.y
+        "#,
+            )
+            .eval()
+            .expect("gravity should work");
+
+        assert!(
+            (y - (-9.81)).abs() < 0.001,
+            "gravity should read from PhysicsConfig (expected -9.81, got {})",
+            y
+        );
+    }
+
+    #[test]
+    fn test_gravity_default_without_config() {
+        let lua = create_lua_with_physics();
+        // No PhysicsConfig set - should use default
+
+        let y: f32 = lua
+            .load(
+                r#"
+            local g = physics.gravity()
+            return g.y
+        "#,
+            )
+            .eval()
+            .expect("gravity should work");
+
+        assert!(
+            (y - (-20.0)).abs() < 0.001,
+            "gravity should use default when no config set (expected -20.0, got {})",
+            y
+        );
     }
 }
