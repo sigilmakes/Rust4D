@@ -1,0 +1,17 @@
+[package]
+name = "rust4d_scripting"
+version = "0.1.0"
+edition = "2021"
+description = "Lua scripting runtime for the Rust4D engine"
+
+[dependencies]
+rust4d_math = { path = "../rust4d_math" }
+rust4d_core = { path = "../rust4d_core" }
+rust4d_physics = { path = "../rust4d_physics" }
+rust4d_game = { path = "../rust4d_game" }
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"] }
+log = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+env_logger = "0.11"

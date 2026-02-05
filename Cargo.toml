@@ -7,6 +7,7 @@ members = [
     "crates/rust4d_input",
     "crates/rust4d_physics",
     "crates/rust4d_game",
+    "crates/rust4d_scripting",
 ]
 
 [workspace.dependencies]
