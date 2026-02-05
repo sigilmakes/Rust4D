@@ -91,16 +91,28 @@ impl SimulationSystem {
         let forward_input = if forward_input.is_finite() { forward_input } else { 0.0 };
         let w_input = if w_input.is_finite() { w_input } else { 0.0 };
 
-        let input = Vec4::new(right_input, 0.0, -forward_input, w_input);
+        // Split into 3D movement (WASD) and 4D movement (Q/E).
+        // 3D movement is projected to the XYZ hyperplane (W zeroed) so that
+        // WASD stays in the 3D slice plane even after 4D rotation.
+        let cam_mat = camera.camera_matrix();
 
-        // Transform by camera matrix to world space
-        let mut accel = mat4::transform(camera.camera_matrix(), input);
+        // 3D part: forward/right in camera space → world space → project to XYZ
+        let input_3d = Vec4::new(right_input, 0.0, -forward_input, 0.0);
+        let mut accel = mat4::transform(cam_mat, input_3d);
 
         // Remove gravity component for horizontal movement
-        // Engine4D style: accel -= gravity * dot(gravity, accel)
         if camera.use_gravity() {
             let gravity = camera.smooth_gravity();
             accel = accel - gravity * accel.dot(gravity);
+        }
+
+        // Remove W component so WASD stays in the 3D slice plane
+        accel.w = 0.0;
+
+        // 4D part: Q/E intentionally moves in W via the camera's ana direction
+        if w_input.abs() > 0.0001 {
+            let input_4d = Vec4::new(0.0, 0.0, 0.0, w_input);
+            accel = accel + mat4::transform(cam_mat, input_4d);
         }
 
         // Normalize to prevent faster diagonal movement, cap magnitude at 1.0

@@ -180,48 +180,67 @@ impl Camera4D {
         self.pitch = (self.pitch + delta_pitch).clamp(-self.pitch_limit, self.pitch_limit);
     }
 
-    /// 4D W-rotation (ZW plane)
+    /// 4D XW rotation (horizontal mouse in W-mode)
     ///
-    /// Rotates the view into the 4th dimension. After SkipY transformation,
-    /// this affects how the XZW hyperplane is oriented but never touches Y.
+    /// Rotates in the XW plane, mixing X and W axes. After SkipY, the camera's
+    /// right direction (X) rotates into the 4th dimension (W). The forward
+    /// direction (Z) is unaffected, so this doesn't cause W drift in WASD.
     pub fn rotate_w(&mut self, delta: f32) {
         if delta.abs() > 0.0001 {
-            // In the 3D rotation space (before SkipY), this is a Y rotation
-            // After SkipY: Y→Z, so this becomes a rotation affecting Z and W
+            // In rotor space: XZ rotation. After SkipY (Y→Z, Z→W): becomes XW
             let r = Rotor4::from_plane_angle(RotationPlane::XZ, -delta);
             self.rotation_4d = self.rotation_4d.compose(&r).normalize();
         }
     }
 
-    /// 4D XW rotation
+    /// 4D ZW rotation (vertical mouse in W-mode)
     ///
-    /// Rotates in the XW plane. After SkipY transformation, this affects
-    /// X and W but never touches Y.
+    /// Rotates in the ZW plane, mixing forward (Z) and ana (W) directions.
+    /// After this rotation, the camera looks partially "into" the 4th dimension.
     pub fn rotate_xw(&mut self, delta: f32) {
         if delta.abs() > 0.0001 {
-            // In the 3D rotation space (before SkipY), this is an X rotation
-            // After SkipY: X→X, Z→W, so this becomes XW rotation
+            // In rotor space: YZ rotation. After SkipY (Y→Z, Z→W): becomes ZW
             let r = Rotor4::from_plane_angle(RotationPlane::YZ, delta);
             self.rotation_4d = self.rotation_4d.compose(&r).normalize();
         }
     }
 
-    /// Move by transforming input through the camera matrix (Engine4D style).
+    /// Move by transforming input through the camera matrix.
+    ///
+    /// After transforming to world space, the gravity component is removed so
+    /// WASD stays horizontal. For WASD movement (the `forward`/`right`/`up`
+    /// components), the W component is also zeroed to prevent 4D drift when the
+    /// camera is rotated in ZW. Only explicit ana input (Q/E) moves in W.
     fn move_camera(&mut self, forward: f32, right: f32, up: f32, ana: f32) {
         if forward.abs() < 0.0001 && right.abs() < 0.0001 && up.abs() < 0.0001 && ana.abs() < 0.0001 {
             return;
         }
 
-        // Build input vector in camera space
-        // Note: forward is -Z in camera space
-        let input = Vec4::new(right, up, -forward, ana);
-
-        // Transform by camera matrix
         let cam_mat = self.camera_matrix();
-        let world_movement = mat4::transform(cam_mat, input);
 
-        // Apply movement
-        self.position += world_movement;
+        // 3D movement (forward/right/up): transform then project to XYZ
+        let input_3d = Vec4::new(right, up, -forward, 0.0);
+        let mut movement = mat4::transform(cam_mat, input_3d);
+
+        // Remove gravity component so WASD stays horizontal
+        if self.use_gravity {
+            let gravity = self.smooth_gravity_direction;
+            movement = movement - gravity * movement.dot(gravity);
+        }
+
+        // Remove W component so WASD stays in the 3D slice plane.
+        // After 4D rotation (e.g. ZW), the camera's forward direction has a W
+        // component in world space. Without this projection, walking forward
+        // would drift the camera's W position, changing the cross-section.
+        movement.w = 0.0;
+
+        // Add explicit 4D movement (Q/E keys) — this intentionally moves in W
+        if ana.abs() > 0.0001 {
+            let ana_input = Vec4::new(0.0, 0.0, 0.0, ana);
+            movement = movement + mat4::transform(cam_mat, ana_input);
+        }
+
+        self.position += movement;
     }
 
     /// Move in the camera-local XZ plane (forward/backward, left/right)
@@ -558,7 +577,9 @@ mod tests {
     }
 
     #[test]
-    fn test_pitch_affects_movement() {
+    fn test_pitch_does_not_affect_y_with_gravity() {
+        // With gravity enabled, WASD movement stays horizontal even when pitched.
+        // This is correct FPS behavior: looking up and walking forward doesn't fly.
         let mut cam = Camera4D::new();
         cam.position = Vec4::ZERO;
 
@@ -568,9 +589,31 @@ mod tests {
         // Move forward
         cam.move_local_xz(1.0, 0.0);
 
-        // Y should be positive (moving up because we're pitched up)
-        assert!(cam.position.y > 0.5,
-            "Forward movement should affect Y when pitched, got Y={}", cam.position.y);
+        // Y should be ~0 (gravity removes vertical component)
+        assert!(cam.position.y.abs() < EPSILON,
+            "Forward movement should stay horizontal with gravity, got Y={}", cam.position.y);
+
+        // Z should still change (horizontal forward)
+        assert!(cam.position.z.abs() > 0.1,
+            "Forward movement should still have horizontal component, got Z={}", cam.position.z);
+    }
+
+    #[test]
+    fn test_pitch_affects_y_without_gravity() {
+        // Without gravity, pitched movement DOES affect Y (noclip/flying mode).
+        let mut cam = Camera4D::new();
+        cam.position = Vec4::ZERO;
+        cam.set_use_gravity(false);
+
+        // Pitch up 45°
+        cam.rotate_3d(0.0, FRAC_PI_4);
+
+        // Move forward
+        cam.move_local_xz(1.0, 0.0);
+
+        // Y should be positive (moving up because we're pitched up, no gravity)
+        assert!(cam.position.y > 0.3,
+            "Forward movement should affect Y when pitched without gravity, got Y={}", cam.position.y);
     }
 
     #[test]
@@ -944,4 +987,47 @@ mod tests {
         assert!(approx_eq(gravity.x, 0.0), "Reset should clear X gravity");
     }
 
+    #[test]
+    fn test_forward_movement_no_w_drift_after_zw_rotation() {
+        // After a ZW rotation (vertical mouse in W-mode), pressing forward
+        // should NOT cause W drift. This is the core 4D movement bug.
+        let mut cam = Camera4D::new();
+        cam.position = Vec4::ZERO;
+
+        // rotate_xw does ZW rotation (Z and W mixed, forward affected)
+        cam.rotate_xw(FRAC_PI_4);
+
+        // Debug: print camera matrix columns
+        let cm = cam.camera_matrix();
+        println!("Camera matrix after rotate_xw(PI/4) [ZW rotation]:");
+        for col in 0..4 {
+            println!("  col{}: ({:.4}, {:.4}, {:.4}, {:.4})",
+                col, cm[col][0], cm[col][1], cm[col][2], cm[col][3]);
+        }
+
+        // Debug: print forward direction
+        let fwd = cam.forward();
+        println!("Forward: ({:.4}, {:.4}, {:.4}, {:.4})", fwd.x, fwd.y, fwd.z, fwd.w);
+        println!("Forward has W component: {:.4}", fwd.w);
+
+        let w_before = cam.position.w;
+
+        // Move forward
+        cam.move_local_xz(1.0, 0.0);
+
+        let w_after = cam.position.w;
+        let w_drift = (w_after - w_before).abs();
+
+        println!("Position after move: ({:.4}, {:.4}, {:.4}, {:.4})",
+            cam.position.x, cam.position.y, cam.position.z, cam.position.w);
+        println!("W before: {}, W after: {}, drift: {}", w_before, w_after, w_drift);
+
+        // WASD movement should NOT cause W drift
+        assert!(
+            w_drift < 0.001,
+            "Forward movement caused W drift of {} after ZW rotation! \
+             This is the 4D movement bug: WASD should stay in the 3D slice plane.",
+            w_drift
+        );
+    }
 }

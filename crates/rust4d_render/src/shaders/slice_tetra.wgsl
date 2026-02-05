@@ -142,10 +142,10 @@ const TETRA_TRI_TABLE: array<array<i32, 6>, 16> = array<array<i32, 6>, 16>(
 
 /// Transform a 4D world position to camera space
 /// 1. Translate by -camera_position (move camera to origin)
-/// 2. Apply view matrix (world→camera, pre-transformed by CPU with Z row negation)
+/// 2. Apply view matrix (world→camera, pre-transposed on CPU)
 ///
-/// The view matrix is pre-transposed and Z-negated on the CPU (Engine4D style),
-/// so we use it directly here.
+/// The view matrix is transpose(camera_matrix), converting camera-to-world
+/// into world-to-camera. No Z-negation (that's Unity-specific).
 fn transform_to_camera_space(world_pos: vec4<f32>, camera_pos: vec4<f32>, view_mat: mat4x4<f32>) -> vec4<f32> {
     let relative_pos = world_pos - camera_pos;
     return view_mat * relative_pos;
