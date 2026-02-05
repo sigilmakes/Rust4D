@@ -60,6 +60,40 @@
 
 use mlua::prelude::*;
 
+/// Screen dimensions configuration for HUD bindings.
+///
+/// Set this via `lua.set_app_data(ScreenConfig { ... })` to provide
+/// actual screen dimensions to Lua scripts. If not set, screen_size()
+/// returns 1920x1080 as a fallback.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use rust4d_scripting::bindings::hud::ScreenConfig;
+///
+/// // In your game loop, update the screen config when the window resizes
+/// lua.set_app_data(ScreenConfig {
+///     width: window.inner_size().width as f32,
+///     height: window.inner_size().height as f32,
+/// });
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct ScreenConfig {
+    /// Screen width in logical pixels
+    pub width: f32,
+    /// Screen height in logical pixels
+    pub height: f32,
+}
+
+impl Default for ScreenConfig {
+    fn default() -> Self {
+        Self {
+            width: 1920.0,
+            height: 1080.0,
+        }
+    }
+}
+
 /// Register HUD bindings with the Lua VM
 ///
 /// Creates a global `hud` table with the following functions:
@@ -257,19 +291,28 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     // - width: Screen width in pixels
     // - height: Screen height in pixels
     //
-    // # Stub Behavior (LOW-11)
-    //
-    // When HudContext is not bound (stub mode), returns hardcoded 1920x1080.
-    // This is a common default resolution suitable for layout testing, but
-    // scripts should not rely on this value for production code. When the
-    // engine is properly wired up, real screen dimensions will be returned.
+    // Reads from ScreenConfig if set via app_data, otherwise returns default 1920x1080.
     hud_table.set(
         "screen_size",
-        lua.create_function(|_, ()| {
-            // STUB: Return default fallback (1920x1080 is a common resolution for testing)
-            // Real implementation would get from HudContext::screen_size()
-            log::trace!("[hud] screen_size() called - HudContext not bound, returning 1920x1080");
-            Ok((1920.0f32, 1080.0f32))
+        lua.create_function(|lua, ()| {
+            // Try to get ScreenConfig from app_data
+            if let Some(config) = lua.app_data_ref::<ScreenConfig>() {
+                log::trace!(
+                    "[hud] screen_size() - returning {}x{}",
+                    config.width,
+                    config.height
+                );
+                Ok((config.width, config.height))
+            } else {
+                // No config set - use default
+                let default = ScreenConfig::default();
+                log::trace!(
+                    "[hud] screen_size() - ScreenConfig not set, using default {}x{}",
+                    default.width,
+                    default.height
+                );
+                Ok((default.width, default.height))
+            }
         })?,
     )?;
 
@@ -596,5 +639,65 @@ mod tests {
         lua.load(r#"hud.text(-10, -20, "Offscreen", 16, {1, 1, 1, 1})"#)
             .exec()
             .expect("Should handle negative positions (offscreen)");
+    }
+
+    #[test]
+    fn test_screen_size_reads_from_config() {
+        let lua = Lua::new();
+
+        // Set custom screen config
+        lua.set_app_data(ScreenConfig {
+            width: 2560.0,
+            height: 1440.0,
+        });
+
+        register(&lua).unwrap();
+
+        // Verify screen_size reads from config
+        let (w, h): (f32, f32) = lua
+            .load(
+                r#"
+            return hud.screen_size()
+        "#,
+            )
+            .eval()
+            .expect("screen_size should work");
+
+        assert!(
+            (w - 2560.0).abs() < 0.001,
+            "width should read from ScreenConfig (expected 2560, got {})",
+            w
+        );
+        assert!(
+            (h - 1440.0).abs() < 0.001,
+            "height should read from ScreenConfig (expected 1440, got {})",
+            h
+        );
+    }
+
+    #[test]
+    fn test_screen_size_default_without_config() {
+        let lua = create_lua_with_hud();
+        // No ScreenConfig set - should use default 1920x1080
+
+        let (w, h): (f32, f32) = lua
+            .load(
+                r#"
+            return hud.screen_size()
+        "#,
+            )
+            .eval()
+            .expect("screen_size should work");
+
+        assert!(
+            (w - 1920.0).abs() < 0.001,
+            "width should use default when no config (expected 1920, got {})",
+            w
+        );
+        assert!(
+            (h - 1080.0).abs() < 0.001,
+            "height should use default when no config (expected 1080, got {})",
+            h
+        );
     }
 }

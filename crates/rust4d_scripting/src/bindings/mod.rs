@@ -10,6 +10,10 @@
 //! - `input` - Input polling (keyboard, mouse, actions)
 //! - `audio` - 4D spatial audio playback
 //! - `hud` - HUD/GUI overlay drawing
+//!
+//! ## Configuration Types
+//!
+//! - [`ScreenConfig`] - Set via `lua.set_app_data()` to provide screen dimensions
 
 pub mod audio;
 pub mod ecs;
@@ -17,6 +21,9 @@ pub mod hud;
 pub mod input;
 pub mod math;
 pub mod physics;
+
+// Re-export configuration types for easy access
+pub use hud::ScreenConfig;
 
 use mlua::{Lua, Result as LuaResult};
 
