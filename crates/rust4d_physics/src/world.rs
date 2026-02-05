@@ -186,17 +186,33 @@ impl PhysicsWorld {
         false
     }
 
+    /// Maximum physics steps per update call to prevent spiral of death
+    const MAX_STEPS_PER_UPDATE: u32 = 8;
+
     /// Update the physics simulation using fixed timestep accumulator
     ///
     /// Accumulates the frame's `dt` and runs zero or more fixed-size `step()`
     /// calls. This ensures deterministic physics regardless of frame rate.
+    ///
+    /// To prevent a "spiral of death" from sustained low frame rates, the
+    /// number of steps per update is capped at `MAX_STEPS_PER_UPDATE` (8).
+    /// Excess accumulator time beyond 2x the fixed timestep is discarded.
     pub fn update(&mut self, dt: f32) {
         // Clamp incoming dt to prevent spiral of death
         let dt = dt.min(0.25);
         self.accumulator += dt;
-        while self.accumulator >= self.fixed_dt {
+
+        let mut steps = 0u32;
+        while self.accumulator >= self.fixed_dt && steps < Self::MAX_STEPS_PER_UPDATE {
             self.step(self.fixed_dt);
             self.accumulator -= self.fixed_dt;
+            steps += 1;
+        }
+
+        // Discard excess accumulator to prevent catch-up spiral
+        // If we're more than 2 fixed steps behind, reset to avoid perpetual lag
+        if self.accumulator > self.fixed_dt * 2.0 {
+            self.accumulator = 0.0;
         }
     }
 

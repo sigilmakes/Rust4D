@@ -14,8 +14,15 @@ pub struct ScriptConfig {
     /// Enable hot-reload of scripts (default: false)
     pub hot_reload: bool,
     /// Lua memory limit in bytes (0 = unlimited, default: 64MB)
+    ///
+    /// TODO: not yet implemented - these limits are not enforced.
+    /// The mlua crate supports memory limits via `Lua::set_memory_limit()`,
+    /// but this requires additional configuration during VM creation.
     pub memory_limit: usize,
     /// Lua instruction limit per call (0 = unlimited, default: 0)
+    ///
+    /// TODO: not yet implemented - these limits are not enforced.
+    /// Instruction limits require setting up a hook via `Lua::set_hook()`.
     pub instruction_limit: u32,
 }
 
@@ -47,6 +54,20 @@ impl ScriptConfig {
 /// - Dangerous globals removed (os, io, debug, loadfile, dofile)
 /// - `print()` redirected to `log::info!`
 pub fn create_lua_vm(config: &ScriptConfig) -> LuaResult<Lua> {
+    // Warn if non-default limits are configured (they're not yet enforced)
+    if config.memory_limit != 64 * 1024 * 1024 {
+        log::warn!(
+            "ScriptConfig.memory_limit is set to {} bytes, but memory limits are not yet implemented",
+            config.memory_limit
+        );
+    }
+    if config.instruction_limit != 0 {
+        log::warn!(
+            "ScriptConfig.instruction_limit is set to {}, but instruction limits are not yet implemented",
+            config.instruction_limit
+        );
+    }
+
     let lua = Lua::new();
 
     // Configure package path for the scripts directory
