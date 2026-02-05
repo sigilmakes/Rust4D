@@ -308,11 +308,13 @@ impl Camera4D {
         // Calculate rotation limits
         let max_angle = dt * self.gravity_config.rate_degrees_per_sec.to_radians();
         let gravity_smooth = 2.0_f32.powf(-dt / self.gravity_config.smooth_time_constant);
-        let angle = self.gravity_direction.angle_to(self.smooth_gravity_direction);
+
+        // Check angle between target and intermediate to detect large gravity changes
+        let target_angle = self.gravity_direction.angle_to(self.intermediate_gravity_direction);
 
         // Two-stage smoothing like Engine4D
         // Stage 1: Large angle changes snap immediately, small angles smooth
-        if angle > self.gravity_config.snap_threshold_degrees.to_radians() {
+        if target_angle > self.gravity_config.snap_threshold_degrees.to_radians() {
             self.intermediate_gravity_direction = self.gravity_direction;
         } else {
             self.intermediate_gravity_direction = self.intermediate_gravity_direction
@@ -366,7 +368,14 @@ impl Camera4D {
     }
 
     /// Set the gravity smoothing configuration.
+    ///
+    /// # Panics
+    /// Panics if `smooth_time_constant` is <= 0 or `rate_degrees_per_sec` is negative.
     pub fn set_gravity_config(&mut self, config: GravityConfig) {
+        assert!(config.smooth_time_constant > 0.0,
+            "smooth_time_constant must be positive, got {}", config.smooth_time_constant);
+        assert!(config.rate_degrees_per_sec >= 0.0,
+            "rate_degrees_per_sec must be non-negative, got {}", config.rate_degrees_per_sec);
         self.gravity_config = config;
     }
 
@@ -405,11 +414,24 @@ impl Camera4D {
         mat4::transform(self.camera_matrix(), Vec4::new(0.0, 0.0, 0.0, 1.0))
     }
 
-    /// Get the 4x4 rotation matrix for the camera orientation
+    /// Get the 4x4 rotation matrix for the camera orientation (camera-to-world).
     ///
     /// This returns the full camera matrix including both pitch and 4D rotation.
     pub fn rotation_matrix(&self) -> [[f32; 4]; 4] {
         self.camera_matrix()
+    }
+
+    /// Get the pre-transformed view matrix (world-to-camera) for the GPU shader.
+    ///
+    /// Applies the Engine4D-style transformation:
+    /// 1. Transpose (camera→world becomes world→camera)
+    /// 2. Negate Z row (Engine4D shader convention)
+    ///
+    /// The shader can use this matrix directly without any internal transpose.
+    pub fn view_matrix(&self) -> [[f32; 4]; 4] {
+        let mut m = mat4::transpose(self.camera_matrix());
+        mat4::negate_row(&mut m, 2);
+        m
     }
 }
 

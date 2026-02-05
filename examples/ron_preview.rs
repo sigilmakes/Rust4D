@@ -483,7 +483,7 @@ impl ApplicationHandler for PreviewApp {
                         slice_w: self.camera.get_slice_w(),
                         tetrahedron_count: self.geometry.tetrahedron_count() as u32,
                         _padding: [0.0; 2],
-                        camera_matrix: self.camera.rotation_matrix(),
+                        camera_matrix: self.camera.view_matrix(),
                         camera_position: [pos.x, pos.y, pos.z, pos.w],
                     };
                     sp.update_params(&ctx.queue, &slice_params);

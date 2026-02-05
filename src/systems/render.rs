@@ -13,7 +13,6 @@ use rust4d_render::{
     pipeline::{perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline},
     RenderableGeometry,
 };
-use rust4d_math::mat4;
 use crate::config::{CameraConfig, RenderingConfig};
 
 /// Render error types
@@ -112,20 +111,11 @@ impl RenderSystem {
         let camera_pos_4d = [pos.x, pos.y, pos.z, pos.w];
 
         // Update slice parameters
-        //
-        // Engine4D-style view matrix transformation:
-        // 1. Transpose the camera matrix (camera→world becomes world→camera)
-        // 2. Negate Z row (Engine4D convention for shader interface)
-        //
-        // This allows the shader to use the matrix directly without internal transpose.
-        let mut view_matrix = mat4::transpose(camera.rotation_matrix());
-        mat4::negate_row(&mut view_matrix, 2); // Negate Z row per Engine4D
-
         let slice_params = SliceParams {
             slice_w: camera.get_slice_w(),
             tetrahedron_count: geometry.tetrahedron_count() as u32,
             _padding: [0.0; 2],
-            camera_matrix: view_matrix,  // Pre-transformed view matrix
+            camera_matrix: camera.view_matrix(),  // Pre-transformed view matrix
             camera_position: camera_pos_4d,
         };
         self.slice_pipeline
