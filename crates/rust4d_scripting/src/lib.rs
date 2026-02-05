@@ -31,6 +31,7 @@
 
 pub mod bindings;
 pub mod error;
+pub mod hot_reload;
 pub mod lifecycle;
 pub mod loader;
 pub mod vm;
@@ -47,6 +48,8 @@ pub struct ScriptEngine {
     lua: Lua,
     config: ScriptConfig,
     error_state: Option<ScriptError>,
+    #[cfg(feature = "hot-reload")]
+    watcher: Option<hot_reload::ScriptWatcher>,
 }
 
 impl ScriptEngine {
@@ -54,12 +57,25 @@ impl ScriptEngine {
     ///
     /// This initializes the Lua VM with sandboxed globals and configured
     /// package paths but does not load any scripts.
+    ///
+    /// If the `hot-reload` feature is enabled and `config.hot_reload` is true,
+    /// a file watcher will be created to monitor the scripts directory.
     pub fn new(config: ScriptConfig) -> Result<Self, ScriptError> {
         let lua = vm::create_lua_vm(&config)?;
+
+        #[cfg(feature = "hot-reload")]
+        let watcher = if config.hot_reload {
+            Some(hot_reload::ScriptWatcher::new(&config.scripts_dir)?)
+        } else {
+            None
+        };
+
         Ok(Self {
             lua,
             config,
             error_state: None,
+            #[cfg(feature = "hot-reload")]
+            watcher,
         })
     }
 
@@ -145,6 +161,71 @@ impl ScriptEngine {
     pub fn eval(&self, code: &str) -> Result<String, ScriptError> {
         let result: LuaValue = self.lua.load(code).eval()?;
         Ok(format_lua_value(&result))
+    }
+
+    /// Check for changed files and reload them.
+    ///
+    /// This should be called once per frame in the game loop. It polls the
+    /// file watcher for changes and reloads any modified Lua files.
+    ///
+    /// Returns `true` if any files were successfully reloaded.
+    ///
+    /// # Error Handling
+    ///
+    /// If a reload fails (e.g., syntax error in the new code), the error is
+    /// logged and stored in the error state, but the old version of the module
+    /// continues to run. This allows developers to fix errors without crashing.
+    ///
+    /// # Feature Gate
+    ///
+    /// This method only performs work when the `hot-reload` feature is enabled.
+    /// Otherwise it always returns `false`.
+    pub fn check_hot_reload(&mut self) -> bool {
+        #[cfg(feature = "hot-reload")]
+        {
+            // Collect changes and scripts_dir first to avoid borrow conflicts
+            let (changed, scripts_dir) = match self.watcher {
+                Some(ref watcher) => (watcher.poll_changes(), watcher.scripts_dir().to_path_buf()),
+                None => return false,
+            };
+
+            let mut reloaded = false;
+
+            for path in changed {
+                if let Some(module_name) = hot_reload::path_to_module_name(&path, &scripts_dir) {
+                    match hot_reload::reload_module(&self.lua, &module_name, &path) {
+                        Ok(()) => {
+                            reloaded = true;
+                            self.clear_error();
+                        }
+                        Err(e) => {
+                            log::error!("{}", e);
+                            self.set_error(e);
+                            // Keep old version running
+                        }
+                    }
+                }
+            }
+            return reloaded;
+        }
+
+        #[cfg(not(feature = "hot-reload"))]
+        false
+    }
+
+    /// Check if hot-reload is enabled and active.
+    ///
+    /// Returns `true` if the `hot-reload` feature is enabled and the
+    /// configuration has `hot_reload: true`.
+    pub fn is_hot_reload_enabled(&self) -> bool {
+        #[cfg(feature = "hot-reload")]
+        {
+            self.watcher.is_some()
+        }
+        #[cfg(not(feature = "hot-reload"))]
+        {
+            false
+        }
     }
 }
 

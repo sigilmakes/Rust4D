@@ -22,6 +22,7 @@ pub mod ray;
 pub mod shape;
 pub mod tesseract;
 pub mod hyperplane;
+pub mod interpolation;
 
 pub use vec4::Vec4;
 pub use rotor4::{Rotor4, RotationPlane};
@@ -30,3 +31,4 @@ pub use ray::Ray4D;
 pub use shape::{ConvexShape4D, Tetrahedron};
 pub use tesseract::Tesseract4D;
 pub use hyperplane::Hyperplane4D;
+pub use interpolation::Interpolatable;

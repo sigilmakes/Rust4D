@@ -8,6 +8,7 @@ members = [
     "crates/rust4d_physics",
     "crates/rust4d_game",
     "crates/rust4d_scripting",
+    "crates/rust4d_audio",
 ]
 
 [workspace.dependencies]
@@ -22,6 +23,7 @@ hecs = "0.10"
 bitflags = "2.4"
 serde = { version = "1.0", features = ["derive"] }
 figment = { version = "0.10", features = ["toml", "env"] }
+ron = "0.8"
 
 # Internal crates
 rust4d_math = { path = "crates/rust4d_math" }
@@ -31,6 +33,7 @@ rust4d_input = { path = "crates/rust4d_input" }
 rust4d_physics = { path = "crates/rust4d_physics" }
 rust4d_game = { path = "crates/rust4d_game" }
 rust4d_scripting = { path = "crates/rust4d_scripting" }
+rust4d_audio = { path = "crates/rust4d_audio" }
 
 [package]
 name = "rust4d"
@@ -63,6 +66,7 @@ figment.workspace = true
 [dev-dependencies]
 toml = "0.8"
 serial_test = "3.0"
+ron.workspace = true
 
 [[example]]
 name = "01_hello_tesseract"
@@ -79,3 +83,7 @@ path = "examples/03_physics_demo.rs"
 [[example]]
 name = "04_camera_exploration"
 path = "examples/04_camera_exploration.rs"
+
+[[example]]
+name = "ron_preview"
+path = "examples/ron_preview.rs"

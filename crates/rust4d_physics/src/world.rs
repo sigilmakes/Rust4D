@@ -275,6 +275,251 @@ impl PhysicsWorld {
         nearest
     }
 
+    // ====== Spatial Queries ======
+
+    /// Find all bodies within a 4D sphere
+    ///
+    /// Returns bodies whose center is within `radius` of `center`.
+    /// Filters by collision layer using the provided `layer_mask`.
+    /// Results are sorted by distance (nearest first).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Find all enemies within 10 units of the player
+    /// let nearby = world.query_sphere(
+    ///     player_pos,
+    ///     10.0,
+    ///     CollisionLayer::ENEMY,
+    /// );
+    /// for result in nearby {
+    ///     println!("Enemy at distance {}", result.distance);
+    /// }
+    /// ```
+    pub fn query_sphere(
+        &self,
+        center: Vec4,
+        radius: f32,
+        layer_mask: CollisionLayer,
+    ) -> Vec<crate::spatial::SpatialQueryResult> {
+        use crate::spatial::SpatialQueryResult;
+
+        let mut results = Vec::new();
+        let radius_sq = radius * radius;
+
+        // Check all bodies
+        for (key, body) in &self.bodies {
+            if !body.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+
+            let delta = body.position - center;
+            let dist_sq = delta.length_squared();
+
+            if dist_sq <= radius_sq {
+                let distance = dist_sq.sqrt();
+                results.push(SpatialQueryResult {
+                    target: RayTarget::Body(key),
+                    position: body.position,
+                    distance,
+                });
+            }
+        }
+
+        // Check all static colliders
+        for (index, static_col) in self.static_colliders.iter().enumerate() {
+            if !static_col.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+
+            let col_center = static_col.collider.center();
+            let delta = col_center - center;
+            let dist_sq = delta.length_squared();
+
+            if dist_sq <= radius_sq {
+                let distance = dist_sq.sqrt();
+                results.push(SpatialQueryResult {
+                    target: RayTarget::Static(index),
+                    position: col_center,
+                    distance,
+                });
+            }
+        }
+
+        // Sort by distance (nearest first)
+        results.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        results
+    }
+
+    /// Find all bodies for an area effect (explosion, AoE attack, etc.)
+    ///
+    /// Like `query_sphere` but also computes:
+    /// - Distance falloff (1.0 at center, 0.0 at radius edge) when `with_falloff` is true
+    /// - Direction from center to each hit (for knockback calculations)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Explosion at position with radius 15, affecting enemies
+    /// let hits = world.query_area_effect(
+    ///     explosion_pos,
+    ///     15.0,
+    ///     CollisionLayer::ENEMY,
+    ///     true, // calculate falloff
+    /// );
+    /// for hit in hits {
+    ///     let damage = base_damage * hit.falloff;
+    ///     let knockback = hit.direction * knockback_force * hit.falloff;
+    ///     // Apply damage and knockback...
+    /// }
+    /// ```
+    pub fn query_area_effect(
+        &self,
+        center: Vec4,
+        radius: f32,
+        layer_mask: CollisionLayer,
+        with_falloff: bool,
+    ) -> Vec<crate::spatial::AreaEffectHit> {
+        use crate::spatial::AreaEffectHit;
+
+        let mut results = Vec::new();
+        let radius_sq = radius * radius;
+
+        // Check all bodies
+        for (key, body) in &self.bodies {
+            if !body.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+
+            let delta = body.position - center;
+            let dist_sq = delta.length_squared();
+
+            if dist_sq <= radius_sq {
+                let distance = dist_sq.sqrt();
+                let falloff = if with_falloff {
+                    1.0 - (distance / radius)
+                } else {
+                    1.0
+                };
+                let direction = if distance > f32::EPSILON {
+                    delta.normalized()
+                } else {
+                    // Object at exact center - use arbitrary direction (up)
+                    Vec4::Y
+                };
+
+                results.push(AreaEffectHit {
+                    target: RayTarget::Body(key),
+                    position: body.position,
+                    distance,
+                    falloff,
+                    direction,
+                });
+            }
+        }
+
+        // Check all static colliders
+        for (index, static_col) in self.static_colliders.iter().enumerate() {
+            if !static_col.filter.layer.intersects(layer_mask) {
+                continue;
+            }
+
+            let col_center = static_col.collider.center();
+            let delta = col_center - center;
+            let dist_sq = delta.length_squared();
+
+            if dist_sq <= radius_sq {
+                let distance = dist_sq.sqrt();
+                let falloff = if with_falloff {
+                    1.0 - (distance / radius)
+                } else {
+                    1.0
+                };
+                let direction = if distance > f32::EPSILON {
+                    delta.normalized()
+                } else {
+                    Vec4::Y
+                };
+
+                results.push(AreaEffectHit {
+                    target: RayTarget::Static(index),
+                    position: col_center,
+                    distance,
+                    falloff,
+                    direction,
+                });
+            }
+        }
+
+        // Sort by distance (nearest first)
+        results.sort_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        results
+    }
+
+    /// Check line of sight between two points
+    ///
+    /// Returns `true` if no blocking colliders are between `from` and `to`.
+    /// Uses `blocking_layers` to determine what blocks sight.
+    ///
+    /// This is useful for:
+    /// - AI visibility checks
+    /// - Determining if a target can be hit
+    /// - Area effect obstruction (e.g., explosions blocked by walls)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Check if enemy can see the player
+    /// let can_see = world.line_of_sight(
+    ///     enemy_pos,
+    ///     player_pos,
+    ///     CollisionLayer::STATIC, // Only walls block sight
+    /// );
+    /// if can_see {
+    ///     // Enemy spots player!
+    /// }
+    /// ```
+    pub fn line_of_sight(
+        &self,
+        from: Vec4,
+        to: Vec4,
+        blocking_layers: CollisionLayer,
+    ) -> bool {
+        let delta = to - from;
+        let max_distance = delta.length();
+
+        // Handle zero-distance case (same point)
+        if max_distance < f32::EPSILON {
+            return true;
+        }
+
+        let direction = delta.normalized();
+        let ray = Ray4D::new(from, direction);
+
+        // Check if anything blocks the line of sight
+        match self.raycast_nearest(&ray, max_distance, blocking_layers) {
+            Some(hit) => {
+                // Something was hit - check if it's before the target
+                // Use a small epsilon to handle floating point precision
+                hit.hit.distance >= max_distance - f32::EPSILON
+            }
+            None => {
+                // Nothing blocking the path
+                true
+            }
+        }
+    }
+
     // ====== Collision Events ======
 
     /// Drain all collision events generated since the last drain.
@@ -2144,5 +2389,323 @@ mod tests {
         let events = world.drain_collision_events();
         // Should have accumulated events from all 3 steps (gravity recollides every step)
         assert!(events.len() >= 3, "Events should accumulate across steps, got {}", events.len());
+    }
+
+    // ===== Spatial Query Tests =====
+
+    #[test]
+    fn test_query_sphere_finds_bodies_in_range() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add body at origin
+        let key = world.add_body(
+            RigidBody4D::new_sphere(Vec4::ZERO, 0.5)
+                .with_gravity(false)
+        );
+
+        // Query with center at (5,0,0,0), radius 10 - should find the body
+        let results = world.query_sphere(
+            Vec4::new(5.0, 0.0, 0.0, 0.0),
+            10.0,
+            CollisionLayer::ALL,
+        );
+
+        assert_eq!(results.len(), 1, "Should find one body in range");
+        match results[0].target {
+            RayTarget::Body(found_key) => assert_eq!(found_key, key),
+            _ => panic!("Expected Body target"),
+        }
+        assert!((results[0].distance - 5.0).abs() < 0.001, "Distance should be 5.0");
+    }
+
+    #[test]
+    fn test_query_sphere_excludes_bodies_out_of_range() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add body at origin
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::ZERO, 0.5)
+                .with_gravity(false)
+        );
+
+        // Query with center at (20,0,0,0), radius 5 - too far away
+        let results = world.query_sphere(
+            Vec4::new(20.0, 0.0, 0.0, 0.0),
+            5.0,
+            CollisionLayer::ALL,
+        );
+
+        assert!(results.is_empty(), "Should not find body out of range");
+    }
+
+    #[test]
+    fn test_query_sphere_filters_by_layer() {
+        use crate::collision::CollisionFilter;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add body with ENEMY layer
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::ZERO, 0.5)
+                .with_filter(CollisionFilter::enemy())
+                .with_gravity(false)
+        );
+
+        // Query with PLAYER layer mask - should not find the ENEMY body
+        let results = world.query_sphere(
+            Vec4::ZERO,
+            10.0,
+            CollisionLayer::PLAYER,
+        );
+
+        assert!(results.is_empty(), "Should not find body with non-matching layer");
+    }
+
+    #[test]
+    fn test_query_sphere_finds_matching_layer() {
+        use crate::collision::CollisionFilter;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add body with ENEMY layer
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::ZERO, 0.5)
+                .with_filter(CollisionFilter::enemy())
+                .with_gravity(false)
+        );
+
+        // Query with ENEMY layer mask - should find the body
+        let results = world.query_sphere(
+            Vec4::ZERO,
+            10.0,
+            CollisionLayer::ENEMY,
+        );
+
+        assert_eq!(results.len(), 1, "Should find body with matching layer");
+    }
+
+    #[test]
+    fn test_query_sphere_sorted_by_distance() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add bodies at different distances
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 0.5)
+                .with_gravity(false)
+        );
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 0.5)
+                .with_gravity(false)
+        );
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::new(15.0, 0.0, 0.0, 0.0), 0.5)
+                .with_gravity(false)
+        );
+
+        let results = world.query_sphere(
+            Vec4::ZERO,
+            20.0,
+            CollisionLayer::ALL,
+        );
+
+        assert_eq!(results.len(), 3);
+        assert!((results[0].distance - 5.0).abs() < 0.001, "Nearest should be at distance 5");
+        assert!((results[1].distance - 10.0).abs() < 0.001, "Second should be at distance 10");
+        assert!((results[2].distance - 15.0).abs() < 0.001, "Farthest should be at distance 15");
+    }
+
+    #[test]
+    fn test_area_effect_falloff() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add body at distance 5 from origin
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 0.5)
+                .with_gravity(false)
+        );
+
+        // Query with radius 10, with_falloff = true
+        let results = world.query_area_effect(
+            Vec4::ZERO,
+            10.0,
+            CollisionLayer::ALL,
+            true,
+        );
+
+        assert_eq!(results.len(), 1);
+        // Falloff = 1.0 - (5.0 / 10.0) = 0.5
+        assert!((results[0].falloff - 0.5).abs() < 0.001, "Falloff should be 0.5, got {}", results[0].falloff);
+        // Direction should point from origin toward body (positive X)
+        assert!(results[0].direction.x > 0.9, "Direction should be positive X");
+    }
+
+    #[test]
+    fn test_area_effect_no_falloff() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add body at distance 5 from origin
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 0.5)
+                .with_gravity(false)
+        );
+
+        // Query with radius 10, with_falloff = false
+        let results = world.query_area_effect(
+            Vec4::ZERO,
+            10.0,
+            CollisionLayer::ALL,
+            false,
+        );
+
+        assert_eq!(results.len(), 1);
+        // Falloff should be 1.0 when with_falloff is false
+        assert!((results[0].falloff - 1.0).abs() < 0.001, "Falloff should be 1.0 without falloff");
+    }
+
+    #[test]
+    fn test_area_effect_at_center() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add body at exact center
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::ZERO, 0.5)
+                .with_gravity(false)
+        );
+
+        let results = world.query_area_effect(
+            Vec4::ZERO,
+            10.0,
+            CollisionLayer::ALL,
+            true,
+        );
+
+        assert_eq!(results.len(), 1);
+        // Falloff should be 1.0 at center
+        assert!((results[0].falloff - 1.0).abs() < 0.001, "Falloff at center should be 1.0");
+        // Direction should be Y (fallback for zero distance)
+        assert_eq!(results[0].direction, Vec4::Y, "Direction should be Y at zero distance");
+    }
+
+    #[test]
+    fn test_line_of_sight_clear() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // No obstacles
+        let clear = world.line_of_sight(
+            Vec4::ZERO,
+            Vec4::new(10.0, 0.0, 0.0, 0.0),
+            CollisionLayer::STATIC,
+        );
+
+        assert!(clear, "Line of sight should be clear with no obstacles");
+    }
+
+    #[test]
+    fn test_line_of_sight_blocked_by_static() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a wall between the two points
+        world.add_static_collider(
+            StaticCollider::aabb(
+                Vec4::new(5.0, 0.0, 0.0, 0.0),
+                Vec4::new(1.0, 10.0, 10.0, 10.0),
+                PhysicsMaterial::CONCRETE,
+            )
+        );
+
+        let blocked = world.line_of_sight(
+            Vec4::ZERO,
+            Vec4::new(10.0, 0.0, 0.0, 0.0),
+            CollisionLayer::STATIC,
+        );
+
+        assert!(!blocked, "Line of sight should be blocked by static collider");
+    }
+
+    #[test]
+    fn test_line_of_sight_not_blocked_by_different_layer() {
+        use crate::collision::CollisionFilter;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add an enemy body between the two points (not STATIC layer)
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 1.0)
+                .with_filter(CollisionFilter::enemy())
+                .with_gravity(false)
+        );
+
+        // Check line of sight blocking only STATIC layer
+        let clear = world.line_of_sight(
+            Vec4::ZERO,
+            Vec4::new(10.0, 0.0, 0.0, 0.0),
+            CollisionLayer::STATIC,
+        );
+
+        assert!(clear, "Line of sight should be clear when obstacle is on different layer");
+    }
+
+    #[test]
+    fn test_line_of_sight_blocked_by_body() {
+        use crate::collision::CollisionFilter;
+
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add an enemy body between the two points
+        world.add_body(
+            RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 1.0)
+                .with_filter(CollisionFilter::enemy())
+                .with_gravity(false)
+        );
+
+        // Check line of sight blocking ENEMY layer
+        let blocked = world.line_of_sight(
+            Vec4::ZERO,
+            Vec4::new(10.0, 0.0, 0.0, 0.0),
+            CollisionLayer::ENEMY,
+        );
+
+        assert!(!blocked, "Line of sight should be blocked by enemy body");
+    }
+
+    #[test]
+    fn test_line_of_sight_same_point() {
+        let world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Same start and end point
+        let clear = world.line_of_sight(
+            Vec4::ZERO,
+            Vec4::ZERO,
+            CollisionLayer::ALL,
+        );
+
+        assert!(clear, "Line of sight to same point should be clear");
+    }
+
+    #[test]
+    fn test_query_sphere_finds_static_colliders() {
+        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+
+        // Add a static collider
+        world.add_static_collider(
+            StaticCollider::aabb(
+                Vec4::new(3.0, 0.0, 0.0, 0.0),
+                Vec4::new(1.0, 1.0, 1.0, 1.0),
+                PhysicsMaterial::CONCRETE,
+            )
+        );
+
+        let results = world.query_sphere(
+            Vec4::ZERO,
+            10.0,
+            CollisionLayer::STATIC,
+        );
+
+        assert_eq!(results.len(), 1, "Should find static collider");
+        match results[0].target {
+            RayTarget::Static(idx) => assert_eq!(idx, 0),
+            _ => panic!("Expected Static target"),
+        }
+        assert!((results[0].distance - 3.0).abs() < 0.001, "Distance should be 3.0");
     }
 }

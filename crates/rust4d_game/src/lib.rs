@@ -11,7 +11,9 @@ pub mod character_controller;
 pub mod events;
 pub mod fsm;
 pub mod scene_helpers;
+pub mod tween;
 
 pub use character_controller::{CharacterController4D, CharacterConfig};
 pub use events::{EventBus, HandlerId};
 pub use fsm::StateMachine;
+pub use tween::{EasingFunction, Tween, TweenId, TweenManager, TweenState};

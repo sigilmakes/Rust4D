@@ -7,4 +7,5 @@ edition = "2021"
 rust4d_math.workspace = true
 rust4d_physics.workspace = true
 rust4d_core.workspace = true
+hecs.workspace = true
 log.workspace = true
