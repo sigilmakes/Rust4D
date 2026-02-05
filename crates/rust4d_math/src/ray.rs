@@ -13,9 +13,12 @@ pub struct Ray4D {
 
 impl Ray4D {
     /// Create a new ray. Direction will be normalized automatically.
-    /// Panics (debug_assert) if direction is zero vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if direction is a zero vector (in both debug and release builds).
     pub fn new(origin: Vec4, direction: Vec4) -> Self {
-        debug_assert!(
+        assert!(
             direction.length_squared() > 0.0,
             "Ray direction cannot be zero"
         );
@@ -101,7 +104,6 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Ray direction cannot be zero")]
-    #[cfg(debug_assertions)]
     fn test_ray_new_panics_on_zero_direction() {
         let _ray = Ray4D::new(Vec4::ZERO, Vec4::ZERO);
     }

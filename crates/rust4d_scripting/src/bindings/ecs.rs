@@ -87,12 +87,21 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
 
     // world.spawn(components) -> LuaEntity
     // Creates a new entity with the given components.
-    // Stub: Returns a DANGLING entity and logs the spawn request.
+    //
+    // WARNING: This is a stub implementation that returns Entity::DANGLING.
+    // The returned entity has id() = u32::MAX and is not a real entity in any
+    // hecs::World. Do not store this entity for later use - it will not work
+    // correctly when real ECS integration is added. This stub exists only to
+    // allow scripts to run without errors during development.
     world_table.set(
         "spawn",
         lua.create_function(|_, components: LuaTable| {
             let count = components.len().unwrap_or(0);
-            log::debug!("[ecs] spawn called with {} components", count);
+            log::warn!(
+                "[ecs] world.spawn() called with {} components - this is a stub that returns \
+                 Entity::DANGLING. Do not store the returned entity for later use.",
+                count
+            );
 
             // Log component names for debugging
             for pair in components.pairs::<String, LuaValue>() {

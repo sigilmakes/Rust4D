@@ -45,6 +45,7 @@ pub fn load_script(lua: &Lua, path: &Path) -> Result<(), ScriptError> {
 }
 
 /// Load a script from a string (useful for testing)
+#[cfg(test)]
 pub fn load_script_string(lua: &Lua, source: &str, name: &str) -> Result<(), ScriptError> {
     lua.load(source)
         .set_name(name)

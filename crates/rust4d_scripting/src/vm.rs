@@ -4,7 +4,7 @@
 //! Dangerous operations (os, io, debug, loadfile, dofile) are removed.
 
 use mlua::{Lua, Result as LuaResult};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Configuration for the script engine
 #[derive(Debug, Clone)]
@@ -83,7 +83,7 @@ pub fn create_lua_vm(config: &ScriptConfig) -> LuaResult<Lua> {
 }
 
 /// Configure Lua's package.path for the scripts directory
-fn configure_package_path(lua: &Lua, scripts_dir: &PathBuf) -> LuaResult<()> {
+fn configure_package_path(lua: &Lua, scripts_dir: &Path) -> LuaResult<()> {
     let globals = lua.globals();
     let package: mlua::Table = globals.get("package")?;
 
@@ -152,6 +152,7 @@ fn setup_print_redirect(lua: &Lua) -> LuaResult<()> {
 }
 
 /// Check if a global exists in the Lua VM
+#[cfg(test)]
 pub fn has_global(lua: &Lua, name: &str) -> LuaResult<bool> {
     let globals = lua.globals();
     let value: mlua::Value = globals.get(name)?;
