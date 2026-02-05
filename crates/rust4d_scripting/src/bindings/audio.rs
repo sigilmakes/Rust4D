@@ -165,8 +165,8 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
             // 1. Get AudioEngine4D from lua.app_data()
             // 2. Call engine.load_sound(&path)
             // 3. Return the resulting handle
-            log::debug!(
-                "[audio] load_sound('{}') called - AudioEngine not bound, returning dummy handle",
+            log::trace!(
+                "[audio] load_sound('{}') - stub returning dummy handle",
                 path
             );
             Ok(LuaSoundHandle::new(0))
@@ -186,11 +186,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
             let bus_name = validate_bus_name(&bus)?;
             // STUB: Log warning
             // Real implementation would call engine.play(&handle, bus)
-            log::debug!(
-                "[audio] play(handle={}, bus='{}') called - AudioEngine not bound",
-                handle.id,
-                bus_name
-            );
+            log::trace!("[audio] play(handle={}, bus='{}') - stub", handle.id, bus_name);
             Ok(())
         })?,
     )?;
@@ -207,11 +203,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "play_oneshot",
         lua.create_function(|_, (handle, bus): (LuaSoundHandle, String)| {
             let bus_name = validate_bus_name(&bus)?;
-            log::debug!(
-                "[audio] play_oneshot(handle={}, bus='{}') called - AudioEngine not bound",
-                handle.id,
-                bus_name
-            );
+            log::trace!("[audio] play_oneshot(handle={}, bus='{}') - stub", handle.id, bus_name);
             Ok(())
         })?,
     )?;
@@ -229,11 +221,9 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "play_spatial",
         lua.create_function(|_, (handle, pos, bus): (LuaSoundHandle, LuaVec4, String)| {
             let bus_name = validate_bus_name(&bus)?;
-            log::debug!(
-                "[audio] play_spatial(handle={}, pos=({:.2}, {:.2}, {:.2}, {:.2}), bus='{}') called - AudioEngine not bound",
-                handle.id,
-                pos.0.x, pos.0.y, pos.0.z, pos.0.w,
-                bus_name
+            log::trace!(
+                "[audio] play_spatial(handle={}, pos=({:.2}, {:.2}, {:.2}, {:.2}), bus='{}') - stub",
+                handle.id, pos.0.x, pos.0.y, pos.0.z, pos.0.w, bus_name
             );
             Ok(())
         })?,
@@ -267,12 +257,9 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
                     ));
                 }
 
-                log::debug!(
-                    "[audio] play_oneshot_spatial(handle={}, pos=({:.2}, {:.2}, {:.2}, {:.2}), min={:.2}, max={:.2}, bus='{}') called - AudioEngine not bound",
-                    handle.id,
-                    pos.0.x, pos.0.y, pos.0.z, pos.0.w,
-                    min_dist, max_dist,
-                    bus_name
+                log::trace!(
+                    "[audio] play_oneshot_spatial(handle={}, pos=({:.2}, {:.2}, {:.2}, {:.2}), min={:.2}, max={:.2}, bus='{}') - stub",
+                    handle.id, pos.0.x, pos.0.y, pos.0.z, pos.0.w, min_dist, max_dist, bus_name
                 );
                 Ok(())
             },
@@ -302,11 +289,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
                 );
             }
 
-            log::debug!(
-                "[audio] set_volume(bus='{}', volume={:.2}) called - AudioEngine not bound",
-                bus_name,
-                clamped
-            );
+            log::trace!("[audio] set_volume(bus='{}', volume={:.2}) - stub", bus_name, clamped);
             Ok(())
         })?,
     )?;
@@ -317,7 +300,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     audio_table.set(
         "stop_all",
         lua.create_function(|_, ()| {
-            log::debug!("[audio] stop_all() called - AudioEngine not bound");
+            log::trace!("[audio] stop_all() - stub");
             Ok(())
         })?,
     )?;
@@ -332,10 +315,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "stop_bus",
         lua.create_function(|_, bus: String| {
             let bus_name = validate_bus_name(&bus)?;
-            log::debug!(
-                "[audio] stop_bus('{}') called - AudioEngine not bound",
-                bus_name
-            );
+            log::trace!("[audio] stop_bus('{}') - stub", bus_name);
             Ok(())
         })?,
     )?;
@@ -350,8 +330,8 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     audio_table.set(
         "update_listener",
         lua.create_function(|_, pos: LuaVec4| {
-            log::debug!(
-                "[audio] update_listener(pos=({:.2}, {:.2}, {:.2}, {:.2})) called - AudioEngine not bound",
+            log::trace!(
+                "[audio] update_listener(pos=({:.2}, {:.2}, {:.2}, {:.2})) - stub",
                 pos.0.x, pos.0.y, pos.0.z, pos.0.w
             );
             Ok(())
@@ -367,9 +347,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     audio_table.set(
         "get_listener_position",
         lua.create_function(|_, ()| {
-            log::debug!(
-                "[audio] get_listener_position() called - AudioEngine not bound, returning ZERO"
-            );
+            log::trace!("[audio] get_listener_position() - stub returning ZERO");
             Ok(LuaVec4(rust4d_math::Vec4::ZERO))
         })?,
     )?;

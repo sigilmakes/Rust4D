@@ -1,6 +1,6 @@
 //! Particle types and blend modes
 
-use rust4d_math::Vec4;
+use rust4d_math::{Vec4, Interpolatable};
 
 /// Individual particle in the particle system
 #[derive(Clone, Copy, Debug)]
@@ -84,8 +84,8 @@ impl Particle {
 
         // Interpolate size and color based on lifetime ratio
         let life_ratio = self.lifetime / self.max_lifetime;
-        self.size = lerp(self.end_size, self.initial_size, life_ratio);
-        self.color = lerp_color(self.end_color, self.initial_color, life_ratio);
+        self.size = f32::lerp(&self.end_size, &self.initial_size, life_ratio);
+        self.color = lerp_color(&self.end_color, &self.initial_color, life_ratio);
 
         true
     }
@@ -110,12 +110,19 @@ pub enum BlendMode {
     Additive,
 }
 
+/// Minimum allowed lifetime for particles to avoid CPU waste on instantly-dying particles
+pub const MIN_PARTICLE_LIFETIME: f32 = 0.001;
+
 /// Configuration for particle bursts
 #[derive(Clone, Debug)]
 pub struct BurstConfig {
     /// Number of particles to spawn
     pub count: u32,
-    /// Lifetime in seconds
+    /// Lifetime in seconds.
+    ///
+    /// **Warning**: Setting this to zero or negative values will waste CPU cycles on
+    /// particles that die immediately. Use [`BurstConfig::effective_lifetime()`] to get
+    /// the clamped value, or [`BurstConfig::with_lifetime()`] to set with automatic clamping.
     pub lifetime: f32,
     /// Starting color (RGBA)
     pub initial_color: [f32; 4],
@@ -135,6 +142,23 @@ pub struct BurstConfig {
     pub drag: f32,
     /// Blend mode for particles
     pub blend_mode: BlendMode,
+}
+
+impl BurstConfig {
+    /// Get the effective particle lifetime, clamped to the minimum allowed value.
+    ///
+    /// This ensures particles don't die instantly, which would waste CPU cycles.
+    /// Returns at least [`MIN_PARTICLE_LIFETIME`].
+    #[inline]
+    pub fn effective_lifetime(&self) -> f32 {
+        self.lifetime.max(MIN_PARTICLE_LIFETIME)
+    }
+
+    /// Create a new BurstConfig with the given lifetime (clamped to minimum)
+    pub fn with_lifetime(mut self, lifetime: f32) -> Self {
+        self.lifetime = lifetime.max(MIN_PARTICLE_LIFETIME);
+        self
+    }
 }
 
 impl Default for BurstConfig {
@@ -176,20 +200,16 @@ impl Default for EmitterConfig {
     }
 }
 
-/// Linear interpolation between two values
-#[inline]
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
 /// Linear interpolation between two colors
+///
+/// Uses `Interpolatable::lerp` from rust4d_math for each component.
 #[inline]
-fn lerp_color(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+fn lerp_color(a: &[f32; 4], b: &[f32; 4], t: f32) -> [f32; 4] {
     [
-        lerp(a[0], b[0], t),
-        lerp(a[1], b[1], t),
-        lerp(a[2], b[2], t),
-        lerp(a[3], b[3], t),
+        f32::lerp(&a[0], &b[0], t),
+        f32::lerp(&a[1], &b[1], t),
+        f32::lerp(&a[2], &b[2], t),
+        f32::lerp(&a[3], &b[3], t),
     ]
 }
 
@@ -310,5 +330,27 @@ mod tests {
         assert_eq!(config.count, 10);
         assert_eq!(config.lifetime, 1.0);
         assert!(config.gravity < 0.0); // Should pull down
+    }
+
+    #[test]
+    fn test_burst_config_effective_lifetime() {
+        // Zero lifetime should return minimum from effective_lifetime
+        let config = BurstConfig {
+            lifetime: 0.0,
+            ..BurstConfig::default()
+        };
+        assert_eq!(config.effective_lifetime(), MIN_PARTICLE_LIFETIME);
+
+        // Negative lifetime should return minimum from effective_lifetime
+        let config = BurstConfig {
+            lifetime: -1.0,
+            ..BurstConfig::default()
+        };
+        assert_eq!(config.effective_lifetime(), MIN_PARTICLE_LIFETIME);
+
+        // Valid lifetime should be preserved
+        let config = BurstConfig::default().with_lifetime(2.5);
+        assert_eq!(config.effective_lifetime(), 2.5);
+        assert_eq!(config.lifetime, 2.5);
     }
 }

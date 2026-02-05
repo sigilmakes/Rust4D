@@ -12,6 +12,9 @@ winit.workspace = true
 bytemuck.workspace = true
 log.workspace = true
 
+# Random number generation for particle systems
+rand = { version = "0.8", features = ["small_rng"] }
+
 # egui for HUD overlay
 egui = "0.31"
 egui-wgpu = "0.31"

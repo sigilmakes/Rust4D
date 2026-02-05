@@ -154,8 +154,17 @@ pub fn path_to_module_name(path: &Path, scripts_dir: &Path) -> Option<String> {
 /// This performs the following steps:
 /// 1. Reads the new source from disk
 /// 2. Clears the module from `package.loaded`
-/// 3. Re-executes the module
-/// 4. Calls `on_reload()` if it exists (for scripts to handle state migration)
+/// 3. Re-executes the module using `eval()` to capture its return value
+/// 4. Stores the return value in `package.loaded` (so `require()` returns the new version)
+/// 5. Calls `on_reload()` if it exists (for scripts to handle state migration)
+///
+/// # Module Return Values
+///
+/// Lua modules typically return a table of exports. When hot-reloading, we must
+/// preserve this pattern: the module is evaluated, and its return value is stored
+/// in `package.loaded[module_name]`. This ensures that existing code holding
+/// references to the old module table will still work (though they'll see old values),
+/// while new `require()` calls will get the fresh version.
 ///
 /// # Error Recovery
 ///
@@ -172,20 +181,41 @@ pub fn reload_module(lua: &Lua, module_name: &str, file_path: &Path) -> Result<(
     let source = std::fs::read_to_string(file_path)
         .map_err(|e| ScriptError::IoError(file_path.display().to_string(), e))?;
 
-    // Clear from package.loaded
+    // Clear from package.loaded first (so require() won't return cached version)
     let clear_code = format!(r#"package.loaded["{}"] = nil"#, module_name);
     lua.load(&clear_code)
         .exec()
         .map_err(ScriptError::LuaError)?;
 
-    // Re-execute the module
-    lua.load(&source)
+    // Re-execute the module using eval() to capture its return value.
+    // This is important: Lua modules typically return a table of exports,
+    // and we need to store that return value in package.loaded so that
+    // subsequent require() calls get the updated module.
+    let result: mlua::Value = lua
+        .load(&source)
         .set_name(file_path.to_string_lossy())
-        .exec()
+        .eval()
         .map_err(|e| ScriptError::ModuleReloadError {
             path: file_path.display().to_string(),
             error: e,
         })?;
+
+    // Store the result in package.loaded so require() returns the new version.
+    // If the module returned nil/nothing, we store true (Lua convention for "loaded").
+    let package: mlua::Table = lua
+        .globals()
+        .get("package")
+        .map_err(ScriptError::LuaError)?;
+    let loaded: mlua::Table = package.get("loaded").map_err(ScriptError::LuaError)?;
+
+    let value_to_store = if result.is_nil() {
+        mlua::Value::Boolean(true)
+    } else {
+        result
+    };
+    loaded
+        .set(module_name, value_to_store)
+        .map_err(ScriptError::LuaError)?;
 
     // Call on_reload() if it exists (silently ignore if not)
     let _ = lua.load("if on_reload then on_reload() end").exec();

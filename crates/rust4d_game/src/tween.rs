@@ -93,6 +93,17 @@ impl EasingFunction {
     ///
     /// # Returns
     /// `Some(EasingFunction)` if recognized, `None` otherwise
+    ///
+    /// # Note on API Design
+    ///
+    /// This method returns `Option<Self>` rather than implementing `std::str::FromStr`
+    /// because:
+    /// - The Lua API benefits from `Option` (easy to provide defaults)
+    /// - Error details aren't useful here (there's only one failure mode)
+    /// - This avoids the ceremony of a custom error type
+    ///
+    /// If you need `FromStr` for integration with other Rust APIs (e.g., serde, clap),
+    /// you can use the [`std::str::FromStr`] implementation which wraps this method.
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "linear" => Some(Self::Linear),
@@ -109,7 +120,39 @@ impl EasingFunction {
             _ => None,
         }
     }
+}
 
+/// Error type for parsing easing function from string
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParseEasingError {
+    /// The input string that failed to parse
+    pub input: String,
+}
+
+impl std::fmt::Display for ParseEasingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "unknown easing function '{}', expected one of: linear, ease_in_quad, \
+             ease_out_quad, ease_in_out_quad, ease_in_cubic, ease_out_cubic, ease_in_out_cubic",
+            self.input
+        )
+    }
+}
+
+impl std::error::Error for ParseEasingError {}
+
+impl std::str::FromStr for EasingFunction {
+    type Err = ParseEasingError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        EasingFunction::from_str(s).ok_or_else(|| ParseEasingError {
+            input: s.to_string(),
+        })
+    }
+}
+
+impl EasingFunction {
     /// Get the string name of this easing function
     pub fn name(&self) -> &'static str {
         match self {
@@ -154,8 +197,23 @@ impl<T: Interpolatable> Tween<T> {
     /// # Arguments
     /// * `from` - Starting value
     /// * `to` - Ending value
-    /// * `duration` - Duration in seconds
+    /// * `duration` - Duration in seconds (clamped to >= 0)
     /// * `easing` - Easing function to use
+    ///
+    /// # Zero Duration Behavior
+    ///
+    /// When `duration` is 0 (or negative, which is clamped to 0):
+    /// - The tween starts in [`TweenState::Running`] state
+    /// - [`current()`](Self::current) immediately returns the `to` value
+    /// - The first call to [`update()`](Self::update) completes the tween
+    ///
+    /// This "instant completion on first update" behavior is intentional:
+    /// - It allows the tween system to fire completion callbacks
+    /// - The caller's update loop handles the transition uniformly
+    /// - Starting as `Running` means `is_running()` returns true before the first update
+    ///
+    /// If you need truly instant completion (no update required), check the duration
+    /// and handle the zero case before creating the tween.
     pub fn new(from: T, to: T, duration: f32, easing: EasingFunction) -> Self {
         Self {
             from,
@@ -271,6 +329,24 @@ pub type TweenId = u64;
 ///
 /// This manager tracks tweens by entity and provides an interface for
 /// starting, updating, and cancelling tweens.
+///
+/// # Current Limitations
+///
+/// The manager currently only supports **position tweens** (animating [`Transform4D::position`]).
+/// Other properties that could benefit from tweening are not yet supported:
+///
+/// - **Rotation** (`Rotor4`): Would need separate tracking via `rotation_tweens` map
+/// - **Scale** (`Vec4` or `f32`): Would need `scale_tweens` map
+/// - **Color** (`[f32; 4]`): Useful for fade effects, would need `color_tweens`
+/// - **Custom properties**: Could be supported via a generic property system
+///
+/// Each additional property type would require:
+/// 1. A new `HashMap<Entity, (TweenId, Tween<T>)>` field
+/// 2. A `tween_<property>()` method to start tweens
+/// 3. Update logic in `update()` to apply values to components
+///
+/// For now, rotation and scale changes should be applied directly or via
+/// custom tween handling outside this manager.
 pub struct TweenManager {
     /// Position tweens indexed by entity
     position_tweens: HashMap<hecs::Entity, (TweenId, Tween<Vec4>)>,

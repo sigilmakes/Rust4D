@@ -1,38 +1,9 @@
 //! Particle emitter for continuous particle emission
 
+use rand::{Rng, SeedableRng};
+use rand::rngs::SmallRng;
 use rust4d_math::Vec4;
 use super::types::{Particle, EmitterConfig, BurstConfig};
-
-/// Random number generator state (simple xorshift for portability)
-#[derive(Clone, Debug)]
-struct Rng {
-    state: u64,
-}
-
-impl Rng {
-    fn new(seed: u64) -> Self {
-        Self { state: if seed == 0 { 1 } else { seed } }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut x = self.state;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.state = x;
-        x
-    }
-
-    /// Generate a random f32 in [0, 1)
-    fn next_f32(&mut self) -> f32 {
-        (self.next_u64() as f64 / u64::MAX as f64) as f32
-    }
-
-    /// Generate a random f32 in [-1, 1)
-    fn next_f32_signed(&mut self) -> f32 {
-        self.next_f32() * 2.0 - 1.0
-    }
-}
 
 /// A continuous particle emitter
 #[derive(Clone, Debug)]
@@ -47,30 +18,46 @@ pub struct ParticleEmitter {
     active: bool,
     /// Whether the emitter should be removed
     dead: bool,
-    /// Random number generator
-    rng: Rng,
+    /// Random number generator (SmallRng is fast and non-cryptographic, suitable for particles)
+    rng: SmallRng,
 }
 
 impl ParticleEmitter {
     /// Create a new particle emitter at the given position
+    ///
+    /// Uses the position to derive a seed for the RNG, providing
+    /// variation between emitters at different locations.
     pub fn new(position: Vec4, config: EmitterConfig) -> Self {
-        // Use position as seed for some variation
-        let seed = (position.x.to_bits() as u64)
-            .wrapping_mul(31)
-            .wrapping_add(position.y.to_bits() as u64)
-            .wrapping_mul(37)
-            .wrapping_add(position.z.to_bits() as u64)
-            .wrapping_mul(41)
-            .wrapping_add(position.w.to_bits() as u64);
+        // Use position to derive a seed for variation
+        let seed = Self::derive_seed_from_position(position);
+        Self::with_seed(position, config, seed)
+    }
 
+    /// Create a new particle emitter with a specific seed for deterministic effects
+    ///
+    /// Use this when you need reproducible particle behavior (e.g., for replays
+    /// or synchronized effects across clients).
+    pub fn with_seed(position: Vec4, config: EmitterConfig, seed: u64) -> Self {
         Self {
             config,
             position,
             accumulator: 0.0,
             active: true,
             dead: false,
-            rng: Rng::new(seed.wrapping_add(1)),
+            rng: SmallRng::seed_from_u64(seed),
         }
+    }
+
+    /// Derive a seed from a 4D position for RNG initialization
+    fn derive_seed_from_position(position: Vec4) -> u64 {
+        (position.x.to_bits() as u64)
+            .wrapping_mul(31)
+            .wrapping_add(position.y.to_bits() as u64)
+            .wrapping_mul(37)
+            .wrapping_add(position.z.to_bits() as u64)
+            .wrapping_mul(41)
+            .wrapping_add(position.w.to_bits() as u64)
+            .wrapping_add(1) // Ensure non-zero
     }
 
     /// Update the emitter and return newly spawned particles
@@ -107,7 +94,7 @@ impl ParticleEmitter {
             let particle = Particle::new(
                 self.position,
                 velocity,
-                config.lifetime,
+                config.effective_lifetime(),
                 config.initial_size,
                 config.end_size,
                 config.initial_color,
@@ -129,10 +116,11 @@ impl ParticleEmitter {
         // Using spherical coordinates extended to 4D (hyperspherical)
         // For simplicity, we generate a random vector and normalize
 
-        let x = self.rng.next_f32_signed();
-        let y = self.rng.next_f32_signed();
-        let z = self.rng.next_f32_signed();
-        let w = self.rng.next_f32_signed();
+        // gen_range with f32 uses the standard uniform distribution with proper precision
+        let x = self.rng.gen_range(-1.0f32..1.0f32);
+        let y = self.rng.gen_range(-1.0f32..1.0f32);
+        let z = self.rng.gen_range(-1.0f32..1.0f32);
+        let w = self.rng.gen_range(-1.0f32..1.0f32);
 
         let random_dir = Vec4::new(x, y, z, w).normalized();
 
@@ -207,18 +195,18 @@ impl ParticleEmitter {
 }
 
 /// Spawn a one-time burst of particles at a position
+///
+/// The `seed` parameter allows for deterministic particle effects.
+/// For non-deterministic behavior, you can use any value (e.g., a frame counter).
 pub fn spawn_burst(position: Vec4, config: &BurstConfig, seed: u64) -> Vec<Particle> {
-    let mut emitter = ParticleEmitter {
-        config: EmitterConfig {
+    let mut emitter = ParticleEmitter::with_seed(
+        position,
+        EmitterConfig {
             rate: 0.0,
             burst: config.clone(),
         },
-        position,
-        accumulator: 0.0,
-        active: true,
-        dead: false,
-        rng: Rng::new(seed.wrapping_add(1)),
-    };
+        seed,
+    );
 
     emitter.spawn_burst_internal(config)
 }
@@ -311,9 +299,9 @@ mod tests {
 
     #[test]
     fn test_rng_produces_values() {
-        let mut rng = Rng::new(12345);
-        let v1 = rng.next_f32();
-        let v2 = rng.next_f32();
+        let mut rng = SmallRng::seed_from_u64(12345);
+        let v1: f32 = rng.gen_range(0.0..1.0);
+        let v2: f32 = rng.gen_range(0.0..1.0);
 
         // Values should be in [0, 1)
         assert!(v1 >= 0.0 && v1 < 1.0);
@@ -321,5 +309,29 @@ mod tests {
 
         // Values should be different
         assert!((v1 - v2).abs() > 0.0001);
+    }
+
+    #[test]
+    fn test_deterministic_with_seed() {
+        let config = EmitterConfig {
+            rate: 10.0,
+            burst: BurstConfig {
+                count: 5,
+                ..BurstConfig::default()
+            },
+        };
+
+        // Two emitters with the same seed should produce identical particles
+        let mut emitter1 = ParticleEmitter::with_seed(Vec4::ZERO, config.clone(), 42);
+        let mut emitter2 = ParticleEmitter::with_seed(Vec4::ZERO, config, 42);
+
+        let particles1 = emitter1.update(0.5);
+        let particles2 = emitter2.update(0.5);
+
+        assert_eq!(particles1.len(), particles2.len());
+        for (p1, p2) in particles1.iter().zip(particles2.iter()) {
+            assert_eq!(p1.position, p2.position);
+            assert_eq!(p1.velocity, p2.velocity);
+        }
     }
 }

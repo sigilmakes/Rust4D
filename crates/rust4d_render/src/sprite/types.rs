@@ -43,11 +43,34 @@ impl SpriteSheet {
         self.columns * self.rows
     }
 
-    /// Get UV coordinates for a specific frame
+    /// Get UV coordinates for a specific frame, wrapping if out of bounds
     ///
-    /// Returns (u_min, v_min, u_max, v_max) normalized to [0, 1]
+    /// Returns (u_min, v_min, u_max, v_max) normalized to [0, 1].
+    /// Frame indices that exceed `frame_count()` will wrap around using modulo.
+    /// This is useful for looping animations.
     pub fn frame_uvs(&self, frame: u32) -> [f32; 4] {
         let frame = frame % self.frame_count();
+        self.frame_uvs_unchecked(frame)
+    }
+
+    /// Get UV coordinates for a specific frame with bounds checking
+    ///
+    /// Returns `None` if the frame index is out of bounds.
+    /// Use this when you need to detect invalid frame indices rather than wrap.
+    pub fn frame_uvs_checked(&self, frame: u32) -> Option<[f32; 4]> {
+        if frame >= self.frame_count() {
+            None
+        } else {
+            Some(self.frame_uvs_unchecked(frame))
+        }
+    }
+
+    /// Get UV coordinates for a frame without bounds checking
+    ///
+    /// # Safety
+    /// The caller must ensure `frame < frame_count()`. Passing an out-of-bounds
+    /// frame will produce incorrect UV coordinates but won't cause memory unsafety.
+    fn frame_uvs_unchecked(&self, frame: u32) -> [f32; 4] {
         let col = frame % self.columns;
         let row = frame / self.columns;
 
@@ -147,7 +170,17 @@ pub struct WFadeConfig {
 
 impl WFadeConfig {
     /// Create a new W fade configuration
+    ///
+    /// # Panics
+    /// Debug builds will panic if `fade_end <= fade_start`, as this would cause
+    /// division by zero in `calculate_alpha`. In release builds, such configurations
+    /// will return fully opaque (1.0) for all sprites.
     pub fn new(current_w: f32, fade_start: f32, fade_end: f32) -> Self {
+        debug_assert!(
+            fade_end > fade_start,
+            "WFadeConfig: fade_end ({}) must be greater than fade_start ({})",
+            fade_end, fade_start
+        );
         Self {
             current_w,
             fade_start,
@@ -156,6 +189,13 @@ impl WFadeConfig {
     }
 
     /// Calculate the alpha multiplier for a sprite at the given W position
+    ///
+    /// Returns a value in the range [0.0, 1.0]:
+    /// - 1.0 when the sprite is within `fade_start` distance
+    /// - 0.0 when the sprite is at or beyond `fade_end` distance
+    /// - Linear interpolation in between
+    ///
+    /// If `fade_end <= fade_start` (invalid config), returns 1.0 to avoid division by zero.
     pub fn calculate_alpha(&self, sprite_w: f32) -> f32 {
         let w_distance = (sprite_w - self.current_w).abs();
 
@@ -166,6 +206,10 @@ impl WFadeConfig {
         } else {
             // Linear interpolation between fade_start and fade_end
             let fade_range = self.fade_end - self.fade_start;
+            // Guard against division by zero in case of invalid config
+            if fade_range <= 0.0 {
+                return 1.0;
+            }
             1.0 - (w_distance - self.fade_start) / fade_range
         }
     }
@@ -225,6 +269,22 @@ mod tests {
         let uvs_0 = sheet.frame_uvs(0);
         let uvs_16 = sheet.frame_uvs(16);
         assert_eq!(uvs_0, uvs_16);
+    }
+
+    #[test]
+    fn test_sprite_sheet_uvs_checked() {
+        let sheet = SpriteSheet::new("test", 32, 32, 4, 4);
+
+        // Valid frame should return Some
+        assert!(sheet.frame_uvs_checked(0).is_some());
+        assert!(sheet.frame_uvs_checked(15).is_some());
+
+        // Out of bounds should return None
+        assert!(sheet.frame_uvs_checked(16).is_none());
+        assert!(sheet.frame_uvs_checked(100).is_none());
+
+        // Checked result should match unchecked for valid frames
+        assert_eq!(sheet.frame_uvs_checked(5), Some(sheet.frame_uvs(5)));
     }
 
     #[test]
@@ -319,5 +379,12 @@ mod tests {
         // At fade_end = fully transparent
         let alpha = config.calculate_alpha(3.0);
         assert_eq!(alpha, 0.0);
+    }
+
+    #[test]
+    #[cfg_attr(debug_assertions, should_panic(expected = "fade_end"))]
+    fn test_w_fade_config_invalid_range_panics_in_debug() {
+        // This should panic in debug builds, return 1.0 in release
+        let _config = WFadeConfig::new(0.0, 2.0, 1.0); // fade_end < fade_start
     }
 }

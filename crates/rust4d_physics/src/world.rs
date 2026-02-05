@@ -283,6 +283,31 @@ impl PhysicsWorld {
     /// Filters by collision layer using the provided `layer_mask`.
     /// Results are sorted by distance (nearest first).
     ///
+    /// # Layer Filtering
+    ///
+    /// The query checks if each object's **layer** (not mask) intersects with `layer_mask`.
+    /// This is a one-way check: you're asking "which objects belong to these layers?"
+    ///
+    /// For dynamic bodies, the layer comes from `body.filter.layer` (set via
+    /// [`RigidBody4D::with_layer()`](crate::body::RigidBody4D::with_layer) or
+    /// [`with_filter()`](crate::body::RigidBody4D::with_filter)).
+    ///
+    /// For static colliders, the default layer is [`CollisionLayer::STATIC`]
+    /// (set by [`CollisionFilter::static_world()`](crate::collision::CollisionFilter::static_world)).
+    /// To query static geometry, include `STATIC` in your layer mask:
+    ///
+    /// ```ignore
+    /// // Find enemies AND static geometry
+    /// let hits = world.query_sphere(pos, radius, CollisionLayer::ENEMY | CollisionLayer::STATIC);
+    ///
+    /// // Find only static geometry
+    /// let hits = world.query_sphere(pos, radius, CollisionLayer::STATIC);
+    /// ```
+    ///
+    /// If you create static colliders with custom layers (via
+    /// [`StaticCollider::with_filter()`](crate::body::StaticCollider::with_filter)),
+    /// query for those layers instead.
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -361,6 +386,12 @@ impl PhysicsWorld {
     /// Like `query_sphere` but also computes:
     /// - Distance falloff (1.0 at center, 0.0 at radius edge) when `with_falloff` is true
     /// - Direction from center to each hit (for knockback calculations)
+    ///
+    /// # Layer Filtering
+    ///
+    /// Same filtering rules as [`query_sphere`](Self::query_sphere). Static colliders
+    /// default to [`CollisionLayer::STATIC`]. Include it in `layer_mask` if you want
+    /// area effects to detect static geometry (e.g., destructible walls).
     ///
     /// # Example
     ///

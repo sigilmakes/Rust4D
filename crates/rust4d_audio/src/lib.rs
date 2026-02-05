@@ -9,6 +9,19 @@
 //! - [`SpatialConfig`] - Configuration for spatial audio playback
 //! - [`SoundHandle`] - Handle to a loaded sound
 //!
+//! ## Bus Hierarchy
+//!
+//! The audio system uses a hierarchical bus structure:
+//!
+//! ```text
+//!     Sfx ────┐
+//!     Music ──┼──► Master ──► Output
+//!     Ambient ┘
+//! ```
+//!
+//! All buses (Sfx, Music, Ambient) route through the Master bus, so changing
+//! the Master volume affects all audio output.
+//!
 //! ## Example
 //!
 //! ```ignore
@@ -33,8 +46,8 @@ pub use spatial::SpatialConfig;
 
 use kira::manager::backend::DefaultBackend;
 use kira::manager::{AudioManager, AudioManagerSettings};
-use kira::sound::static_sound::{StaticSoundData, StaticSoundSettings};
-use kira::track::{TrackBuilder, TrackHandle};
+use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
+use kira::track::{TrackBuilder, TrackHandle, TrackRoutes};
 use kira::tween::Tween;
 use kira::Volume;
 use rust4d_math::Vec4;
@@ -58,6 +71,9 @@ pub enum AudioError {
 
     #[error("Sound not found")]
     SoundNotFound,
+
+    #[error("Sound ID overflow: maximum number of sounds ({}) reached", u64::MAX)]
+    SoundIdOverflow,
 }
 
 /// Main audio engine with 4D spatial support
@@ -67,6 +83,8 @@ pub struct AudioEngine4D {
     listener_position: Vec4,
     sounds: HashMap<u64, StaticSoundData>,
     next_sound_id: u64,
+    /// Active sound handles per bus, for stop_all/stop_bus support
+    active_sounds: HashMap<AudioBus, Vec<StaticSoundHandle>>,
 }
 
 impl AudioEngine4D {
@@ -81,26 +99,45 @@ impl AudioEngine4D {
             listener_position: Vec4::ZERO,
             sounds: HashMap::new(),
             next_sound_id: 0,
+            active_sounds: HashMap::new(),
         };
 
-        // Create bus tracks
+        // Create bus tracks with proper routing hierarchy
         engine.create_bus_tracks()?;
+
+        // Initialize active sound tracking for each bus
+        for bus in AudioBus::all() {
+            engine.active_sounds.insert(*bus, Vec::new());
+        }
 
         log::info!("AudioEngine4D initialized successfully");
         Ok(engine)
     }
 
-    /// Create the audio bus tracks
+    /// Create the audio bus tracks with proper routing hierarchy.
+    ///
+    /// Bus hierarchy:
+    /// ```text
+    ///     Sfx ────┐
+    ///     Music ──┼──► Master ──► Output
+    ///     Ambient ┘
+    /// ```
+    ///
+    /// All buses route through Master, so Master volume affects all audio.
     fn create_bus_tracks(&mut self) -> Result<(), AudioError> {
-        for bus in [
-            AudioBus::Master,
-            AudioBus::Sfx,
-            AudioBus::Music,
-            AudioBus::Ambient,
-        ] {
+        // Create Master bus first - routes to main output
+        let master_track = self
+            .manager
+            .add_sub_track(TrackBuilder::new())
+            .map_err(|e| AudioError::TrackCreation(e.to_string()))?;
+        let master_id = master_track.id();
+        self.bus_tracks.insert(AudioBus::Master, master_track);
+
+        // Create other buses routing through Master
+        for bus in [AudioBus::Sfx, AudioBus::Music, AudioBus::Ambient] {
             let track = self
                 .manager
-                .add_sub_track(TrackBuilder::new())
+                .add_sub_track(TrackBuilder::new().routes(TrackRoutes::parent(master_id)))
                 .map_err(|e| AudioError::TrackCreation(e.to_string()))?;
             self.bus_tracks.insert(bus, track);
         }
@@ -108,6 +145,11 @@ impl AudioEngine4D {
     }
 
     /// Load a sound from a file path
+    ///
+    /// # Errors
+    ///
+    /// Returns `AudioError::SoundIdOverflow` if the maximum number of sounds
+    /// (2^64) has been reached. In practice this is unreachable.
     pub fn load_sound(&mut self, path: &str) -> Result<SoundHandle, AudioError> {
         let sound_data = StaticSoundData::from_file(path)
             .map_err(|e| AudioError::LoadSound {
@@ -116,7 +158,10 @@ impl AudioEngine4D {
             })?;
 
         let id = self.next_sound_id;
-        self.next_sound_id += 1;
+        self.next_sound_id = self
+            .next_sound_id
+            .checked_add(1)
+            .ok_or(AudioError::SoundIdOverflow)?;
         self.sounds.insert(id, sound_data);
 
         log::debug!("Loaded sound '{}' with id {}", path, id);
@@ -138,9 +183,15 @@ impl AudioEngine4D {
         let settings = StaticSoundSettings::new().output_destination(track);
         let sound_with_settings = sound_data.with_settings(settings);
 
-        self.manager
+        let handle = self.manager
             .play(sound_with_settings)
             .map_err(|e| AudioError::PlaySound(e.to_string()))?;
+
+        // Track the sound handle for stop_all/stop_bus support
+        self.active_sounds
+            .entry(bus)
+            .or_default()
+            .push(handle);
 
         Ok(())
     }
@@ -181,9 +232,15 @@ impl AudioEngine4D {
 
         let sound_with_settings = sound_data.with_settings(settings);
 
-        self.manager
+        let handle = self.manager
             .play(sound_with_settings)
             .map_err(|e| AudioError::PlaySound(e.to_string()))?;
+
+        // Track the sound handle for stop_all/stop_bus support
+        self.active_sounds
+            .entry(bus)
+            .or_default()
+            .push(handle);
 
         log::trace!(
             "Playing spatial sound at {:?}, volume: {:.2}, panning: {:.2}",
@@ -229,17 +286,39 @@ impl AudioEngine4D {
         self.listener_position
     }
 
-    /// Stop all sounds
+    /// Stop all sounds across all buses
     pub fn stop_all(&mut self) {
-        // kira doesn't have a direct "stop all" on manager,
-        // we'd need to track individual sound handles for this
-        log::warn!("stop_all: Not fully implemented - would need sound handle tracking");
+        let mut stopped_count = 0;
+        for bus in AudioBus::all() {
+            if let Some(handles) = self.active_sounds.get_mut(bus) {
+                for mut handle in handles.drain(..) {
+                    handle.stop(Tween::default());
+                    stopped_count += 1;
+                }
+            }
+        }
+        log::debug!("stop_all: stopped {} sounds", stopped_count);
     }
 
     /// Stop all sounds on a specific bus
     pub fn stop_bus(&mut self, bus: AudioBus) {
-        // Similar limitation as stop_all
-        log::warn!("stop_bus {:?}: Not fully implemented - would need sound handle tracking", bus);
+        if let Some(handles) = self.active_sounds.get_mut(&bus) {
+            let count = handles.len();
+            for mut handle in handles.drain(..) {
+                handle.stop(Tween::default());
+            }
+            log::debug!("stop_bus {:?}: stopped {} sounds", bus, count);
+        }
+    }
+
+    /// Clean up finished sounds from the active sounds list.
+    ///
+    /// Call this periodically (e.g., once per frame) to avoid memory buildup
+    /// from sounds that have finished playing naturally.
+    pub fn cleanup_finished_sounds(&mut self) {
+        for handles in self.active_sounds.values_mut() {
+            handles.retain(|handle| handle.state() != kira::sound::PlaybackState::Stopped);
+        }
     }
 }
 

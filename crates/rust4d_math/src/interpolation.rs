@@ -9,6 +9,30 @@ use crate::{Vec4, Rotor4};
 ///
 /// Linear interpolation smoothly blends between two values based on a
 /// parameter `t` where `t=0.0` returns `a` and `t=1.0` returns `b`.
+///
+/// # Naming Convention
+///
+/// This trait uses a **static method** signature: `Interpolatable::lerp(&a, &b, t)`.
+/// This differs from the **instance method** signature used by [`Vec4::lerp`]:
+/// `a.lerp(b, t)`.
+///
+/// The static signature was chosen because:
+/// - It works uniformly for all types (including primitives like `f32`)
+/// - It matches the mathematical notation `lerp(a, b, t)`
+/// - It avoids ambiguity about which value is "self" vs the target
+///
+/// When using `Vec4` specifically, both APIs are available:
+/// ```ignore
+/// // Instance method (Vec4-specific)
+/// let result = a.lerp(b, t);
+///
+/// // Static method (generic Interpolatable)
+/// let result = <Vec4 as Interpolatable>::lerp(&a, &b, t);
+/// let result = Interpolatable::lerp(&a, &b, t);  // with type inference
+/// ```
+///
+/// The `Interpolatable` implementation for `Vec4` delegates to `Vec4::lerp` internally,
+/// so both produce identical results.
 pub trait Interpolatable: Clone {
     /// Linear interpolation from `a` to `b` at parameter `t`
     ///
@@ -95,6 +119,9 @@ impl Interpolatable for Rotor4 {
         let scale_a = sin_1mt_theta / sin_theta;
         let scale_b = sin_t_theta / sin_theta;
 
+        // Normalize the result to prevent floating-point error accumulation over many slerp calls.
+        // While a single slerp theoretically produces a unit rotor, repeated interpolations
+        // (e.g., in animation chains or blending) can cause gradual denormalization.
         Rotor4 {
             s: scale_a * a.s + scale_b * b_s,
             b_xy: scale_a * a.b_xy + scale_b * b_xy,
@@ -104,7 +131,7 @@ impl Interpolatable for Rotor4 {
             b_yw: scale_a * a.b_yw + scale_b * b_yw,
             b_zw: scale_a * a.b_zw + scale_b * b_zw,
             p: scale_a * a.p + scale_b * b_p,
-        }
+        }.normalize()
     }
 }
 

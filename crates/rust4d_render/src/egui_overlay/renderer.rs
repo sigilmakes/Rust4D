@@ -119,8 +119,31 @@ impl EguiRenderer {
                 timestamp_writes: None,
             });
 
-            // egui-wgpu requires RenderPass<'static> - use forget_lifetime to convert
-            // SAFETY: The render pass internally keeps all referenced resources alive
+            // egui-wgpu requires RenderPass<'static> - use forget_lifetime to convert.
+            //
+            // SAFETY INVARIANT: `forget_lifetime` erases the borrow-checker's knowledge that
+            // `render_pass` borrows from `encoder` and `render_target`. This is safe here
+            // because:
+            //
+            // 1. **Scope containment**: The `render_pass` is created, used, and dropped
+            //    entirely within this inner block. It never escapes to outlive `encoder`
+            //    or `render_target`.
+            //
+            // 2. **No aliasing**: We don't create any other references to `encoder` or
+            //    `render_target` while `render_pass` exists. The mutable borrow through
+            //    the render pass is the only active reference.
+            //
+            // 3. **wgpu internal safety**: The render pass internally holds raw pointers
+            //    to GPU resources, not Rust references. The lifetime parameter exists
+            //    to prevent the encoder from being submitted or dropped while a pass
+            //    is active, which we respect by keeping everything in this block.
+            //
+            // 4. **egui-wgpu requirement**: The egui Renderer::render() method requires
+            //    `RenderPass<'static>` because it stores the pass temporarily during
+            //    rendering. This is a known limitation of the egui-wgpu API design.
+            //
+            // If this code is restructured, ensure the render pass is always dropped
+            // before `encoder` is used for anything else (submission, other passes, etc.).
             let mut render_pass = render_pass.forget_lifetime();
 
             self.renderer

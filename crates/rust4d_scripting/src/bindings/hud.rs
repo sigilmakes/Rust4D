@@ -92,11 +92,11 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "text",
         lua.create_function(|_, (x, y, text, size, color): (f32, f32, String, f32, LuaTable)| {
             let color = table_to_color(&color)?;
-            // STUB: Log debug message
+            // STUB: Log at trace level (LOW-6 - called every frame)
             // Real implementation would:
             // 1. Get HudContext from lua.app_data()
             // 2. Call hud.text([x, y], &text, size, color)
-            log::debug!(
+            log::trace!(
                 "[hud] text at ({}, {}): '{}' size={} color={:?}",
                 x,
                 y,
@@ -122,7 +122,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "text_centered",
         lua.create_function(|_, (x, y, text, size, color): (f32, f32, String, f32, LuaTable)| {
             let color = table_to_color(&color)?;
-            log::debug!(
+            log::trace!(
                 "[hud] text_centered at ({}, {}): '{}' size={} color={:?}",
                 x,
                 y,
@@ -148,7 +148,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "rect",
         lua.create_function(|_, (x, y, w, h, color): (f32, f32, f32, f32, LuaTable)| {
             let color = table_to_color(&color)?;
-            log::debug!(
+            log::trace!(
                 "[hud] rect at ({}, {}) size=({}, {}) color={:?}",
                 x,
                 y,
@@ -176,7 +176,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         lua.create_function(
             |_, (x, y, w, h, color, stroke): (f32, f32, f32, f32, LuaTable, f32)| {
                 let color = table_to_color(&color)?;
-                log::debug!(
+                log::trace!(
                     "[hud] rect_outline at ({}, {}) size=({}, {}) stroke={} color={:?}",
                     x,
                     y,
@@ -218,7 +218,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
                 let bg = table_to_color(&bg_color)?;
                 let fill = table_to_color(&fill_color)?;
                 let progress = progress.clamp(0.0, 1.0);
-                log::debug!(
+                log::trace!(
                     "[hud] progress_bar at ({}, {}) size=({}, {}) progress={:.0}% bg={:?} fill={:?}",
                     x,
                     y,
@@ -244,7 +244,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "flash",
         lua.create_function(|_, color: LuaTable| {
             let color = table_to_color(&color)?;
-            log::debug!("[hud] flash color={:?}", color);
+            log::trace!("[hud] flash color={:?}", color);
             Ok(())
         })?,
     )?;
@@ -256,12 +256,19 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     // Returns:
     // - width: Screen width in pixels
     // - height: Screen height in pixels
+    //
+    // # Stub Behavior (LOW-11)
+    //
+    // When HudContext is not bound (stub mode), returns hardcoded 1920x1080.
+    // This is a common default resolution suitable for layout testing, but
+    // scripts should not rely on this value for production code. When the
+    // engine is properly wired up, real screen dimensions will be returned.
     hud_table.set(
         "screen_size",
         lua.create_function(|_, ()| {
-            // STUB: Return default fallback
+            // STUB: Return default fallback (1920x1080 is a common resolution for testing)
             // Real implementation would get from HudContext::screen_size()
-            log::debug!("[hud] screen_size() called - HudContext not bound, returning 1920x1080");
+            log::trace!("[hud] screen_size() called - HudContext not bound, returning 1920x1080");
             Ok((1920.0f32, 1080.0f32))
         })?,
     )?;
@@ -280,13 +287,45 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
 /// - Named format: `{r=r, g=g, b=b, a=a}`
 ///
 /// Alpha defaults to 1.0 if not specified.
+///
+/// # Warnings
+///
+/// If using named format (detected by presence of 'r' key), logs a warning if
+/// any of g, b, or a are missing. This helps catch typos like `{r=1, g=1, bleu=1}`.
 fn table_to_color(table: &LuaTable) -> LuaResult<[f32; 4]> {
     // Try named keys first (r, g, b, a)
     let r: Option<f32> = table.get("r").ok();
     if let Some(r) = r {
+        // Named format detected - check for missing components
+        let g_present = table.get::<f32>("g").is_ok();
+        let b_present = table.get::<f32>("b").is_ok();
+        let a_present = table.get::<f32>("a").is_ok();
+
         let g: f32 = table.get("g").unwrap_or(0.0);
         let b: f32 = table.get("b").unwrap_or(0.0);
         let a: f32 = table.get("a").unwrap_or(1.0);
+
+        // Warn about missing components (except 'a' which commonly defaults to 1.0)
+        let mut missing = Vec::new();
+        if !g_present {
+            missing.push("g");
+        }
+        if !b_present {
+            missing.push("b");
+        }
+        if !a_present && a == 1.0 {
+            // Alpha missing is common and defaults to 1.0, only warn at trace level
+            log::trace!("[hud] Color table missing 'a' component, defaulting to 1.0");
+        }
+
+        if !missing.is_empty() {
+            log::warn!(
+                "[hud] Color table using named format but missing component(s): {:?}. \
+                 Typo? Got r={}, g={}, b={}, a={}. Missing components default to 0.0.",
+                missing, r, g, b, a
+            );
+        }
+
         return Ok([r, g, b, a]);
     }
 

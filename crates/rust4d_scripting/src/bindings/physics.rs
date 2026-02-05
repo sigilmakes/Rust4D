@@ -48,9 +48,15 @@
 //!
 //! This module is owned by Agent D2 (Math/Physics Bindings).
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use mlua::prelude::*;
 
 use super::math::LuaVec4;
+
+/// Track whether we've logged the "physics not connected" warning.
+/// Only log once to avoid spamming the log at 60fps.
+static PHYSICS_WARNED: AtomicBool = AtomicBool::new(false);
 
 /// Lua representation of a ray hit result
 ///
@@ -168,25 +174,38 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     //
     // Returns:
     // - Array of hit results, each with: distance, point, normal, entity (or nil)
+    //   When physics is not connected, returns a table with `_stub = true` field.
     physics_table.set(
         "raycast",
         lua.create_function(
             |lua, (origin, direction, max_distance, layers): (LuaVec4, LuaVec4, f32, LuaValue)| {
                 let layer_names = parse_layers(layers)?;
-                log::debug!(
+
+                // Log warning only on first call (MEDIUM-7, LOW-6)
+                if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
+                    log::warn!(
+                        "[physics] PhysicsWorld not connected - all physics queries will return \
+                         empty/stub results. This is expected during development but indicates \
+                         missing engine integration in production."
+                    );
+                }
+
+                log::trace!(
                     "[physics] raycast from ({:.2}, {:.2}, {:.2}, {:.2}) dir ({:.2}, {:.2}, {:.2}, {:.2}) max_dist={:.2} layers={:?}",
                     origin.0.x, origin.0.y, origin.0.z, origin.0.w,
                     direction.0.x, direction.0.y, direction.0.z, direction.0.w,
                     max_distance, layer_names
                 );
 
-                // STUB: Return empty array
+                // STUB: Return empty array with _stub marker (MEDIUM-7)
+                // Scripts can check `if results._stub then` to detect stub mode
                 // Real implementation would:
                 // 1. Get PhysicsWorld from lua.app_data()
                 // 2. Create Ray4D from origin and normalized direction
                 // 3. Call world.raycast_all(ray, max_distance, layers)
                 // 4. Convert hits to LuaRayHit and sort by distance
                 let results = lua.create_table()?;
+                results.set("_stub", true)?;
                 Ok(results)
             },
         )?,
@@ -199,13 +218,22 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     // Arguments: same as raycast
     //
     // Returns:
-    // - Single hit result or nil if nothing was hit
+    // - Single hit result or nil if nothing was hit (stub mode always returns nil)
     physics_table.set(
         "raycast_nearest",
         lua.create_function(
             |_, (origin, direction, max_distance, layers): (LuaVec4, LuaVec4, f32, LuaValue)| {
                 let layer_names = parse_layers(layers)?;
-                log::debug!(
+
+                // Ensure warning is logged (may have been triggered by raycast)
+                if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
+                    log::warn!(
+                        "[physics] PhysicsWorld not connected - all physics queries will return \
+                         empty/stub results."
+                    );
+                }
+
+                log::trace!(
                     "[physics] raycast_nearest from ({:.2}, {:.2}, {:.2}, {:.2}) dir ({:.2}, {:.2}, {:.2}, {:.2}) max_dist={:.2} layers={:?}",
                     origin.0.x, origin.0.y, origin.0.z, origin.0.w,
                     direction.0.x, direction.0.y, direction.0.z, direction.0.w,
@@ -230,24 +258,34 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     //
     // Returns:
     // - Array of results, each with: entity, position, distance
+    //   When physics is not connected, returns a table with `_stub = true` field.
     physics_table.set(
         "query_sphere",
         lua.create_function(
             |lua, (center, radius, layers): (LuaVec4, f32, LuaValue)| {
                 let layer_names = parse_layers(layers)?;
-                log::debug!(
+
+                if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
+                    log::warn!(
+                        "[physics] PhysicsWorld not connected - all physics queries will return \
+                         empty/stub results."
+                    );
+                }
+
+                log::trace!(
                     "[physics] query_sphere at ({:.2}, {:.2}, {:.2}, {:.2}) radius={:.2} layers={:?}",
                     center.0.x, center.0.y, center.0.z, center.0.w,
                     radius, layer_names
                 );
 
-                // STUB: Return empty array
+                // STUB: Return empty array with _stub marker (MEDIUM-7)
                 // Real implementation would:
                 // 1. Get PhysicsWorld from lua.app_data()
                 // 2. Iterate all bodies and check distance from center
                 // 3. Filter by layer
                 // 4. Return matches with position and distance
                 let results = lua.create_table()?;
+                results.set("_stub", true)?;
                 Ok(results)
             },
         )?,
@@ -266,6 +304,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     //
     // Returns:
     // - Array of results, each with: entity, position, distance, falloff, direction
+    //   When physics is not connected, returns a table with `_stub = true` field.
     physics_table.set(
         "query_area_effect",
         lua.create_function(
@@ -273,17 +312,26 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
              (center, radius, layers, with_falloff): (LuaVec4, f32, LuaValue, Option<bool>)| {
                 let layer_names = parse_layers(layers)?;
                 let falloff = with_falloff.unwrap_or(true);
-                log::debug!(
+
+                if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
+                    log::warn!(
+                        "[physics] PhysicsWorld not connected - all physics queries will return \
+                         empty/stub results."
+                    );
+                }
+
+                log::trace!(
                     "[physics] query_area_effect at ({:.2}, {:.2}, {:.2}, {:.2}) radius={:.2} falloff={} layers={:?}",
                     center.0.x, center.0.y, center.0.z, center.0.w,
                     radius, falloff, layer_names
                 );
 
-                // STUB: Return empty array
+                // STUB: Return empty array with _stub marker (MEDIUM-7)
                 // Real implementation would be similar to query_sphere but include:
                 // - falloff = 1.0 - (distance / radius) if with_falloff else 1.0
                 // - direction = (entity_pos - center).normalized()
                 let results = lua.create_table()?;
+                results.set("_stub", true)?;
                 Ok(results)
             },
         )?,
@@ -300,11 +348,20 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     //
     // Returns:
     // - true if line of sight is clear, false if blocked
+    //   (stub mode always returns true - assumes nothing is blocking)
     physics_table.set(
         "line_of_sight",
         lua.create_function(|_, (from, to, blocking_layers): (LuaVec4, LuaVec4, LuaValue)| {
             let layer_names = parse_layers(blocking_layers)?;
-            log::debug!(
+
+            if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[physics] PhysicsWorld not connected - all physics queries will return \
+                     empty/stub results."
+                );
+            }
+
+            log::trace!(
                 "[physics] line_of_sight from ({:.2}, {:.2}, {:.2}, {:.2}) to ({:.2}, {:.2}, {:.2}, {:.2}) blocking={:?}",
                 from.0.x, from.0.y, from.0.z, from.0.w,
                 to.0.x, to.0.y, to.0.z, to.0.w,
@@ -323,12 +380,25 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     // physics.gravity() -> Vec4
     //
     // Get the current gravity vector.
-    // Default is (0, -20, 0, 0).
+    //
+    // # Stub Behavior (LOW-16)
+    //
+    // Returns hardcoded default gravity (0, -20, 0, 0), NOT the actual physics
+    // config value. When PhysicsWorld is properly connected, this will return
+    // the configured gravity from PhysicsConfig. The default of -20 on Y is
+    // stronger than Earth gravity (~9.8) for snappier game feel.
     physics_table.set(
         "gravity",
         lua.create_function(|_, ()| {
-            log::debug!("[physics] gravity() called");
-            // STUB: Return default gravity
+            if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[physics] PhysicsWorld not connected - all physics queries will return \
+                     empty/stub results."
+                );
+            }
+
+            log::trace!("[physics] gravity() called - returning hardcoded default (0, -20, 0, 0)");
+            // STUB: Return default gravity (not actual config value)
             // Real implementation would get from PhysicsConfig
             Ok(LuaVec4(rust4d_math::Vec4::new(0.0, -20.0, 0.0, 0.0)))
         })?,
@@ -501,5 +571,31 @@ mod tests {
             )
             .exec();
         assert!(result.is_err(), "should error on invalid layers type");
+    }
+
+    #[test]
+    fn test_stub_marker_present() {
+        // Test that stub results have _stub = true marker (MEDIUM-7 fix)
+        let lua = create_lua_with_physics();
+        lua.load(
+            r#"
+            local origin = Vec4.new(0, 0, 0, 0)
+            local direction = Vec4.new(1, 0, 0, 0)
+
+            -- raycast should have _stub marker
+            local hits = physics.raycast(origin, direction, 100, nil)
+            assert(hits._stub == true, "raycast stub should have _stub = true")
+
+            -- query_sphere should have _stub marker
+            local sphere_results = physics.query_sphere(origin, 10, nil)
+            assert(sphere_results._stub == true, "query_sphere stub should have _stub = true")
+
+            -- query_area_effect should have _stub marker
+            local area_results = physics.query_area_effect(origin, 10, nil)
+            assert(area_results._stub == true, "query_area_effect stub should have _stub = true")
+        "#,
+        )
+        .exec()
+        .expect("stub markers should be present on physics query results");
     }
 }

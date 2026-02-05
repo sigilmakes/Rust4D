@@ -1,6 +1,26 @@
-//! 4D spatial audio calculations
+//! 4D Spatial Audio Calculations
+//!
+//! This module implements spatial audio for 4D environments with the following model:
+//!
+//! ## 4D Audio Model
+//!
+//! - **Volume attenuation** uses the full 4D Euclidean distance between the listener
+//!   and sound source. This means sounds in the W dimension also attenuate naturally.
+//!
+//! - **Stereo panning** operates on the XZ plane projection only. This is intentional:
+//!   standard stereo output can only represent left/right positioning. The Y and W
+//!   components are ignored for panning purposes since:
+//!   - Y (typically vertical) doesn't map to left/right speakers
+//!   - W (4th dimension) has no physical speaker representation
+//!
+//! This design allows 4D games to have spatially accurate volume falloff while
+//! maintaining familiar stereo positioning behavior.
 
 use rust4d_math::Vec4;
+
+/// Epsilon value for panning calculations to avoid division by zero
+/// when the sound source is directly above/below or at the same XZ position as the listener.
+const PANNING_EPSILON: f32 = 0.0001;
 
 /// Configuration for spatial audio playback
 #[derive(Debug, Clone, Copy)]
@@ -66,16 +86,27 @@ pub fn calculate_attenuation(listener: Vec4, config: &SpatialConfig) -> f32 {
     }
 }
 
-/// Calculate stereo panning based on the XZ projection of the 4D direction
+/// Calculate stereo panning based on the XZ projection of the 4D direction.
 ///
 /// Returns a value between 0.0 (left) and 1.0 (right), with 0.5 being center.
+///
+/// # 4D Panning Model
+///
+/// Panning is calculated using only the X and Z components, ignoring Y and W:
+/// - **X axis**: Maps to left/right stereo positioning
+/// - **Z axis**: Represents forward/backward (affects perceived direction angle)
+/// - **Y axis**: Vertical height - no stereo equivalent
+/// - **W axis**: 4th dimension - no physical speaker representation
+///
+/// This is intentional: while volume attenuates based on full 4D distance,
+/// panning must operate in the 2D plane that maps to stereo speakers.
 pub fn calculate_panning(listener: Vec4, config: &SpatialConfig) -> f32 {
     let direction = config.position - listener;
 
     // Project to XZ plane (horizontal plane in typical game coordinates)
     let xz_length_sq = direction.x * direction.x + direction.z * direction.z;
 
-    if xz_length_sq < 0.0001 {
+    if xz_length_sq < PANNING_EPSILON {
         // Source is directly above/below or at same position - center panning
         return 0.5;
     }

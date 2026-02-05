@@ -1,19 +1,44 @@
 //! Particle system for managing particles and emitters
+//!
+//! # Design Note: Emitter Storage
+//!
+//! The particle system uses `Vec<Option<ParticleEmitter>>` with a free list rather than
+//! a `slotmap` crate. This design choice was made for several reasons:
+//!
+//! 1. **Stability over external crates**: The free list pattern is simple and well-understood,
+//!    with no external dependencies. It provides O(1) allocation and deallocation.
+//!
+//! 2. **Index stability**: Returned emitter indices remain valid as long as the emitter exists,
+//!    and become invalid (point to `None`) after the emitter is killed. This matches the
+//!    expected behavior for entity handles.
+//!
+//! 3. **Minimal overhead**: The free list is just a `Vec<usize>` that grows only as needed.
+//!    Memory overhead is one `Option` discriminant per slot.
+//!
+//! 4. **Debuggability**: The storage is trivially inspectable. `Vec<Option<T>>` appears directly
+//!    in debuggers without custom formatters.
+//!
+//! If the particle system grows to manage thousands of emitters with frequent churn, consider
+//! migrating to `slotmap` for its generational indices (which detect use-after-free).
 
 use rust4d_math::Vec4;
 use super::emitter::{ParticleEmitter, spawn_burst};
 use super::types::{Particle, BurstConfig, EmitterConfig};
 
 /// The main particle system that manages all particles and emitters
+///
+/// Particles are stored in a flat `Vec` and updated each frame. Dead particles are
+/// removed using `retain_mut`. Emitters are stored in a `Vec<Option<_>>` with a free
+/// list for O(1) slot allocation and reuse.
 #[derive(Debug)]
 pub struct ParticleSystem {
-    /// All active particles
+    /// All active particles (dead particles are removed each update)
     particles: Vec<Particle>,
-    /// All particle emitters
+    /// All particle emitters (None = free slot)
     emitters: Vec<Option<ParticleEmitter>>,
-    /// Counter for generating unique seeds
+    /// Counter for generating unique seeds for particle randomization
     seed_counter: u64,
-    /// Indices of free emitter slots
+    /// Stack of free emitter slot indices for O(1) allocation
     free_slots: Vec<usize>,
 }
 

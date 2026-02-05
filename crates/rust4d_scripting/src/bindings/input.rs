@@ -44,7 +44,84 @@
 //!
 //! This module is owned by Agent D3 (Input/Audio Bindings).
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use mlua::prelude::*;
+
+/// Track whether we've logged the "input not connected" warning.
+static INPUT_WARNED: AtomicBool = AtomicBool::new(false);
+
+/// Known valid key names for validation.
+/// These correspond to common keyboard keys that would be handled by winit/gilrs.
+const VALID_KEY_NAMES: &[&str] = &[
+    // Letters
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+    "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+    // Numbers
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    // Function keys
+    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+    // Modifiers
+    "Shift", "LShift", "RShift",
+    "Control", "LControl", "RControl", "Ctrl", "LCtrl", "RCtrl",
+    "Alt", "LAlt", "RAlt",
+    "Super", "LSuper", "RSuper", "Win", "LWin", "RWin",
+    // Special keys
+    "Space", "Enter", "Return", "Escape", "Esc",
+    "Tab", "Backspace", "Delete", "Insert",
+    "Home", "End", "PageUp", "PageDown",
+    "Up", "Down", "Left", "Right",
+    // Punctuation and symbols
+    "Minus", "Plus", "Equals",
+    "LeftBracket", "RightBracket", "LBracket", "RBracket",
+    "Backslash", "Semicolon", "Quote", "Apostrophe",
+    "Comma", "Period", "Slash",
+    "Grave", "Backtick", "Tilde",
+    // Numpad
+    "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4",
+    "Numpad5", "Numpad6", "Numpad7", "Numpad8", "Numpad9",
+    "NumpadAdd", "NumpadSubtract", "NumpadMultiply", "NumpadDivide",
+    "NumpadEnter", "NumpadDecimal",
+    // Other
+    "CapsLock", "NumLock", "ScrollLock",
+    "PrintScreen", "Pause",
+];
+
+/// Validate a key name and return it normalized (uppercase for letters).
+/// Returns an error if the key name is not recognized.
+fn validate_key_name(key: &str) -> LuaResult<()> {
+    // Check if it matches any known key (case-insensitive for letters)
+    let key_upper = key.to_uppercase();
+
+    for &valid in VALID_KEY_NAMES {
+        if valid.eq_ignore_ascii_case(key) || valid.to_uppercase() == key_upper {
+            return Ok(());
+        }
+    }
+
+    // Not a recognized key - warn but don't error (might be a valid key we don't know about)
+    log::warn!(
+        "[input] Unknown key name '{}'. This may be a typo. Known keys include: \
+         A-Z, 0-9, F1-F12, Space, Enter, Escape, Shift, Control, Alt, Arrow keys, etc.",
+        key
+    );
+    Ok(())
+}
+
+/// Known valid mouse button names.
+const VALID_MOUSE_BUTTONS: &[&str] = &["left", "right", "middle", "mouse1", "mouse2", "mouse3"];
+
+/// Validate a mouse button name.
+fn validate_mouse_button(button: &str) -> LuaResult<()> {
+    let lower = button.to_lowercase();
+    if !VALID_MOUSE_BUTTONS.contains(&lower.as_str()) {
+        return Err(LuaError::RuntimeError(format!(
+            "Invalid mouse button '{}'. Valid buttons: left, right, middle",
+            button
+        )));
+    }
+    Ok(())
+}
 
 /// Register input bindings with the Lua VM
 ///
@@ -75,15 +152,23 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "is_key_pressed",
         lua.create_function(|_, key: String| {
-            // STUB: Return false and log warning
+            // Validate key name (MEDIUM-14)
+            validate_key_name(&key)?;
+
+            // Log warning only on first call (LOW-6)
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero. \
+                     This is expected during development but indicates missing engine integration."
+                );
+            }
+
+            // STUB: Return false
             // Real implementation would:
             // 1. Get InputState from lua.app_data()
             // 2. Parse key name to KeyCode
             // 3. Return input_state.is_key_pressed(key_code)
-            log::debug!(
-                "[input] is_key_pressed('{}') called - InputState not bound, returning false",
-                key
-            );
+            log::trace!("[input] is_key_pressed('{}') - stub returning false", key);
             Ok(false)
         })?,
     )?;
@@ -100,12 +185,16 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "is_key_just_pressed",
         lua.create_function(|_, key: String| {
-            // STUB: Return false and log warning
-            // Real implementation would check just_pressed state
-            log::debug!(
-                "[input] is_key_just_pressed('{}') called - InputState not bound, returning false",
-                key
-            );
+            validate_key_name(&key)?;
+
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero."
+                );
+            }
+
+            // STUB: Return false
+            log::trace!("[input] is_key_just_pressed('{}') - stub returning false", key);
             Ok(false)
         })?,
     )?;
@@ -123,15 +212,15 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "is_action_pressed",
         lua.create_function(|_, action: String| {
-            // STUB: Return false and log warning
-            // Real implementation would:
-            // 1. Get InputState from lua.app_data()
-            // 2. Look up action mapping
-            // 3. Return true if any mapped input is active
-            log::debug!(
-                "[input] is_action_pressed('{}') called - InputState not bound, returning false",
-                action
-            );
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero."
+                );
+            }
+
+            // STUB: Return false
+            // Action names are user-defined, so we don't validate them
+            log::trace!("[input] is_action_pressed('{}') - stub returning false", action);
             Ok(false)
         })?,
     )?;
@@ -148,11 +237,14 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "is_action_just_pressed",
         lua.create_function(|_, action: String| {
-            // STUB: Return false and log warning
-            log::debug!(
-                "[input] is_action_just_pressed('{}') called - InputState not bound, returning false",
-                action
-            );
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero."
+                );
+            }
+
+            // STUB: Return false
+            log::trace!("[input] is_action_just_pressed('{}') - stub returning false", action);
             Ok(false)
         })?,
     )?;
@@ -172,15 +264,17 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "get_axis",
         lua.create_function(|_, (positive, negative): (String, String)| {
-            // STUB: Return 0.0 and log warning
-            // Real implementation would:
-            // 1. Check both keys
-            // 2. Return (positive_pressed as i8 - negative_pressed as i8) as f32
-            log::debug!(
-                "[input] get_axis('{}', '{}') called - InputState not bound, returning 0.0",
-                positive,
-                negative
-            );
+            validate_key_name(&positive)?;
+            validate_key_name(&negative)?;
+
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero."
+                );
+            }
+
+            // STUB: Return 0.0
+            log::trace!("[input] get_axis('{}', '{}') - stub returning 0.0", positive, negative);
             Ok(0.0f32)
         })?,
     )?;
@@ -195,11 +289,14 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "mouse_delta",
         lua.create_function(|_, ()| {
-            // STUB: Return (0.0, 0.0) and log warning
-            // Real implementation would get accumulated mouse delta from InputState
-            log::debug!(
-                "[input] mouse_delta() called - InputState not bound, returning (0.0, 0.0)"
-            );
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero."
+                );
+            }
+
+            // STUB: Return (0.0, 0.0)
+            log::trace!("[input] mouse_delta() - stub returning (0.0, 0.0)");
             Ok((0.0f32, 0.0f32))
         })?,
     )?;
@@ -214,10 +311,14 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "mouse_position",
         lua.create_function(|_, ()| {
-            // STUB: Return (0.0, 0.0) and log warning
-            log::debug!(
-                "[input] mouse_position() called - InputState not bound, returning (0.0, 0.0)"
-            );
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero."
+                );
+            }
+
+            // STUB: Return (0.0, 0.0)
+            log::trace!("[input] mouse_position() - stub returning (0.0, 0.0)");
             Ok((0.0f32, 0.0f32))
         })?,
     )?;
@@ -234,10 +335,15 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "is_mouse_button_pressed",
         lua.create_function(|_, button: String| {
-            log::debug!(
-                "[input] is_mouse_button_pressed('{}') called - InputState not bound, returning false",
-                button
-            );
+            validate_mouse_button(&button)?;
+
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero."
+                );
+            }
+
+            log::trace!("[input] is_mouse_button_pressed('{}') - stub returning false", button);
             Ok(false)
         })?,
     )?;
@@ -254,10 +360,15 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     input_table.set(
         "is_mouse_button_just_pressed",
         lua.create_function(|_, button: String| {
-            log::debug!(
-                "[input] is_mouse_button_just_pressed('{}') called - InputState not bound, returning false",
-                button
-            );
+            validate_mouse_button(&button)?;
+
+            if !INPUT_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[input] InputState not connected - all input queries will return false/zero."
+                );
+            }
+
+            log::trace!("[input] is_mouse_button_just_pressed('{}') - stub returning false", button);
             Ok(false)
         })?,
     )?;

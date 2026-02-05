@@ -14,6 +14,13 @@ pub enum AudioBus {
 }
 
 impl Default for AudioBus {
+    /// Returns `AudioBus::Sfx` as the default.
+    ///
+    /// Sfx is chosen as the default rather than Master because:
+    /// - Most game sounds (explosions, footsteps, UI clicks) are sound effects
+    /// - Playing directly on Master bypasses per-category volume control
+    /// - Users expect `play_sound(sound)` to respect their SFX volume setting
+    /// - Music and Ambient are typically longer-running and set explicitly
     fn default() -> Self {
         Self::Sfx
     }
