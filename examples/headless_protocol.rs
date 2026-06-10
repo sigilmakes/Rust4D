@@ -438,8 +438,9 @@ fn main() {
         .process_keyboard(KeyCode::KeyA, ElementState::Released);
     cap(&rig, &mut gpu, "03-returned-to-start");
 
-    // Phase 2: rotate 45° into the 4th dimension
-    rig.camera.rotate_w(FRAC_PI_4);
+    // Phase 2: rotate 45° into the 4th dimension (XW plane: right tilts into W,
+    // keeps the slice plane through the tesseract at x=0)
+    rig.camera.rotate_xw(FRAC_PI_4);
     cap(&rig, &mut gpu, "10-rotated-45");
 
     // Phase 3: strafe left after rotation (bug trigger: with the anisotropic
@@ -462,6 +463,34 @@ fn main() {
     for i in 1..=2 {
         rig.run(30);
         cap(&rig, &mut gpu, &format!("2{i}-forward-after-rotation"));
+    }
+    rig.controller
+        .process_keyboard(KeyCode::KeyW, ElementState::Released);
+
+    // Phase 5: rotate back to 3D and walk up close to the tesseract.
+    // Verifies the projection depth range: with the OpenGL-convention
+    // perspective matrix, geometry closer than √(near·far) ≈ 3.16 units
+    // was clipped to nothing.
+    rig.camera.rotate_xw(-FRAC_PI_4);
+    // Teleport the player body back to spawn for a clean approach
+    if let (Some(character), Some(physics)) = (
+        rig.character.as_ref().map(|c| c.body_key()),
+        rig.scene_manager
+            .active_world_mut()
+            .and_then(|w| w.physics_mut()),
+    ) {
+        if let Some(body) = physics.get_body_mut(character) {
+            body.position = Vec4::new(0.0, -1.5, 5.0, 0.0);
+            body.velocity = Vec4::ZERO;
+        }
+    }
+    rig.run(2);
+    cap(&rig, &mut gpu, "30-back-to-3d");
+    rig.controller
+        .process_keyboard(KeyCode::KeyW, ElementState::Pressed);
+    for i in 1..=3 {
+        rig.run(20);
+        cap(&rig, &mut gpu, &format!("3{i}-approach-near"));
     }
     rig.controller
         .process_keyboard(KeyCode::KeyW, ElementState::Released);
