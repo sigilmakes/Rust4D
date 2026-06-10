@@ -15,11 +15,14 @@ What works:
 - FPS-style camera controls with 4D extensions
 - Scene serialization and loading (RON format)
 - Configuration system (TOML with env var overrides)
+- 4D spatial audio with bus routing (Master/Sfx/Music/Ambient)
+- Lua 5.4 scripting with lifecycle callbacks and hot-reload
+- HUD system with sprites and particles
+- Game utilities: EventBus, StateMachine, TweenManager
 
 What's in progress:
 - More 4D shapes (hypersphere, 4D prisms)
 - Advanced collision detection
-- Audio integration
 
 ## What is 4D Rendering?
 
@@ -41,22 +44,25 @@ This is not just a visualization trick - the engine actually computes 4D geometr
 - **GPU-Accelerated Slicing**: Compute shaders slice tetrahedra in parallel
 - **4D Physics**: Gravity, collision detection, and rigid body dynamics in 4D
 - **FPS-Style Controls**: Navigate 4D space with intuitive WASD + Q/E controls
-- **Modular Architecture**: Separate crates for math, core, render, physics, and input
+- **Modular Architecture**: 8 specialized crates for math, core, render, physics, input, audio, scripting, and game logic
 - **Configuration System**: TOML-based configuration with environment variable overrides
 - **Cross-Platform**: Runs on Windows, macOS, and Linux via wgpu
 
 ## Architecture Overview
 
-Rust4D is organized as a Cargo workspace with specialized crates:
+Rust4D is organized as a Cargo workspace with 8 specialized crates:
 
 ```
 rust4d/                 # Main application
 crates/
   rust4d_math/          # 4D vector and matrix math
   rust4d_core/          # World, entities, transforms, shapes
-  rust4d_render/        # GPU rendering pipeline, Camera4D
+  rust4d_render/        # GPU rendering pipeline, Camera4D, HUD, sprites, particles
   rust4d_physics/       # 4D physics simulation
   rust4d_input/         # Input handling and camera controller
+  rust4d_audio/         # 4D spatial audio with kira, bus routing
+  rust4d_scripting/     # Lua 5.4 scripting with hot-reload
+  rust4d_game/          # CharacterController4D, EventBus, StateMachine, TweenManager
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed diagrams and data flow.
