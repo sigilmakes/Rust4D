@@ -114,6 +114,13 @@ sudo dnf install vulkan-loader vulkan-tools
 sudo pacman -S vulkan-icd-loader vulkan-tools
 ```
 
+On **NixOS** (or any system with Nix), skip manual setup entirely — the repo's
+dev shell provides the toolchain, Vulkan wiring, and verification tools:
+
+```bash
+nix develop
+```
+
 ---
 
 ## Building and Running

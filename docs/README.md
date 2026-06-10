@@ -9,14 +9,15 @@ Welcome to the Rust4D documentation. This is a 4D rendering engine written in Ru
 | [Getting Started](./getting-started.md) | Installation, first steps, 4D concepts | New users |
 | [User Guide](./user-guide.md) | Comprehensive feature reference | All users |
 | [Developer Guide](./developer-guide.md) | Architecture, algorithms, contributing | Contributors |
+| [The Mathematics of Rust4D](./4d-math.md) | Rotors, SkipY, slicing, the slice invariant, conventions | Contributors |
 
 ## Quick Start
 
 ```bash
 # Clone and run
-git clone https://github.com/yourusername/rust4d
-cd rust4d
-cargo run --release
+git clone https://github.com/sigilmakes/Rust4D
+cd Rust4D
+cargo run --release   # or: nix develop --command cargo run --release
 
 # Run an example
 cargo run --example 01_hello_tesseract --release

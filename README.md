@@ -186,6 +186,16 @@ See [examples/README.md](examples/README.md) for the full example index and lear
 | 03_physics_demo | Physics with gravity and collision |
 | 04_camera_exploration | Full camera controls |
 
+## Documentation
+
+| Guide | Audience |
+|-------|----------|
+| [Getting Started](docs/getting-started.md) — installation, first steps, 4D concepts | New users |
+| [User Guide](docs/user-guide.md) — full feature reference | All users |
+| [Developer Guide](docs/developer-guide.md) — architecture, algorithms, testing, contributing | Contributors |
+| [The Mathematics of Rust4D](docs/4d-math.md) — rotors, SkipY, slicing, the slice invariant, conventions | Contributors |
+| [ARCHITECTURE.md](ARCHITECTURE.md) — crate structure and data flow | Contributors |
+
 ## Inspiration
 
 - [4D Golf](https://store.steampowered.com/app/2147950/4D_Golf/) - Camera controls based on this
