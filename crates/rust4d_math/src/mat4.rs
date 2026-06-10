@@ -183,7 +183,7 @@ pub fn transpose(m: Mat4) -> Mat4 {
     ]
 }
 
-/// Outer product of two Vec4: result[i][j] = a[i] * b[j]
+/// Outer product of two Vec4: `result[i][j] = a[i] * b[j]`
 ///
 /// Creates a matrix where each column is `a` scaled by the corresponding
 /// component of `b`.

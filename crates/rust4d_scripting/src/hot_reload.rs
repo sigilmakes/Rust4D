@@ -131,9 +131,9 @@ impl ScriptWatcher {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// // "/path/to/scripts/enemies/rusher.lua" with scripts_dir="/path/to/scripts"
-/// // returns Some("enemies.rusher")
+/// ```text
+/// "/path/to/scripts/enemies/rusher.lua" with scripts_dir="/path/to/scripts"
+/// returns Some("enemies.rusher")
 /// ```
 pub fn path_to_module_name(path: &Path, scripts_dir: &Path) -> Option<String> {
     let relative = path.strip_prefix(scripts_dir).ok()?;

@@ -149,7 +149,7 @@ impl BurstConfig {
     /// Get the effective particle lifetime, clamped to the minimum allowed value.
     ///
     /// This ensures particles don't die instantly, which would waste CPU cycles.
-    /// Returns at least [`MIN_PARTICLE_LIFETIME`].
+    /// Returns at least `MIN_PARTICLE_LIFETIME` (0.01s).
     #[inline]
     pub fn effective_lifetime(&self) -> f32 {
         self.lifetime.max(MIN_PARTICLE_LIFETIME)

@@ -333,7 +333,7 @@ pub type TweenId = u64;
 ///
 /// # Current Limitations
 ///
-/// The manager currently only supports **position tweens** (animating [`Transform4D::position`]).
+/// The manager currently only supports **position tweens** (animating `Transform4D::position`).
 /// Other properties that could benefit from tweening are not yet supported:
 ///
 /// - **Rotation** (`Rotor4`): Would need separate tracking via `rotation_tweens` map
