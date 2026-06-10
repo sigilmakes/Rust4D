@@ -8,6 +8,7 @@
 //! - Mouse drag: 3D camera rotation
 //! - Right-click + drag: W-axis rotation
 
+use crate::{ActionMap, CameraAction};
 use rust4d_math::Vec4;
 use winit::event::{ElementState, MouseButton};
 use winit::keyboard::KeyCode;
@@ -36,6 +37,9 @@ pub struct CameraController {
     // Input smoothing state
     smooth_yaw: f32,
     smooth_pitch: f32,
+
+    // Semantic key bindings
+    action_map: ActionMap,
 
     // Configuration
     pub move_speed: f32,
@@ -80,52 +84,53 @@ impl CameraController {
             w_rotation_sensitivity: 0.005,
             smoothing_half_life: 0.05, // 50ms half-life when enabled
             smoothing_enabled: false,  // Disabled by default for responsive FPS feel
+            action_map: ActionMap::default(),
         }
     }
 
-    /// Process keyboard input
-    pub fn process_keyboard(&mut self, key: KeyCode, state: ElementState) -> bool {
-        let pressed = state == ElementState::Pressed;
+    /// Replace the key/action binding map.
+    pub fn with_action_map(mut self, action_map: ActionMap) -> Self {
+        self.action_map = action_map;
+        self
+    }
 
-        match key {
-            KeyCode::KeyW => {
-                self.forward = pressed;
-                true
-            }
-            KeyCode::KeyS => {
-                self.backward = pressed;
-                true
-            }
-            KeyCode::KeyA => {
-                self.left = pressed;
-                true
-            }
-            KeyCode::KeyD => {
-                self.right = pressed;
-                true
-            }
-            KeyCode::KeyQ => {
-                self.ana = pressed;
-                true
-            }
-            KeyCode::KeyE => {
-                self.kata = pressed;
-                true
-            }
-            KeyCode::Space => {
+    /// Read the active key/action binding map.
+    pub fn action_map(&self) -> &ActionMap {
+        &self.action_map
+    }
+
+    /// Mutate the active key/action binding map.
+    pub fn action_map_mut(&mut self) -> &mut ActionMap {
+        &mut self.action_map
+    }
+
+    /// Process a semantic camera action.
+    pub fn process_action(&mut self, action: CameraAction, state: ElementState) {
+        let pressed = state == ElementState::Pressed;
+        match action {
+            CameraAction::MoveForward => self.forward = pressed,
+            CameraAction::MoveBackward => self.backward = pressed,
+            CameraAction::MoveLeft => self.left = pressed,
+            CameraAction::MoveRight => self.right = pressed,
+            CameraAction::MoveUp => {
                 self.up = pressed;
-                // Also track jump for physics mode
                 if pressed {
                     self.jump_pressed = true;
                 }
-                true
             }
-            KeyCode::ShiftLeft | KeyCode::ShiftRight => {
-                self.down = pressed;
-                true
-            }
-            _ => false,
+            CameraAction::MoveDown => self.down = pressed,
+            CameraAction::MoveAna => self.ana = pressed,
+            CameraAction::MoveKata => self.kata = pressed,
         }
+    }
+
+    /// Process keyboard input through the active [`ActionMap`].
+    pub fn process_keyboard(&mut self, key: KeyCode, state: ElementState) -> bool {
+        let actions: Vec<_> = self.action_map.actions_for_key(key).collect();
+        for action in &actions {
+            self.process_action(*action, state);
+        }
+        !actions.is_empty()
     }
 
     /// Process mouse button input
@@ -953,6 +958,30 @@ mod tests {
 
         // Without smoothing, should get full rotation
         assert!((camera.yaw_rotated - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_custom_action_map_rebinds_forward() {
+        let mut map = ActionMap::empty();
+        map.bind(KeyCode::ArrowUp, CameraAction::MoveForward);
+        let mut controller = CameraController::new().with_action_map(map);
+        let mut camera = MockCamera::new();
+
+        assert!(!controller.process_keyboard(KeyCode::KeyW, ElementState::Pressed));
+        assert!(controller.process_keyboard(KeyCode::ArrowUp, ElementState::Pressed));
+        assert_eq!(controller.get_movement_input(), (1.0, 0.0));
+
+        controller.update(&mut camera, 1.0, false);
+        assert_eq!(camera.forward_moved, controller.move_speed);
+    }
+
+    #[test]
+    fn test_process_action_bypasses_keyboard_layout() {
+        let mut controller = CameraController::new();
+        controller.process_action(CameraAction::MoveAna, ElementState::Pressed);
+        assert_eq!(controller.get_w_input(), 1.0);
+        controller.process_action(CameraAction::MoveAna, ElementState::Released);
+        assert_eq!(controller.get_w_input(), 0.0);
     }
 
     #[test]

@@ -17,14 +17,16 @@
 //!
 //! This module is owned by Scripting-ECS-Agent.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use mlua::prelude::*;
 use rust4d_core::hecs::Entity;
 
-/// Counter for generating incrementing fake entity IDs in stub mode.
-/// This ensures each spawned entity has a unique ID for comparison purposes.
-static STUB_ENTITY_COUNTER: AtomicU32 = AtomicU32::new(1);
+/// Counter for generating deterministic stub entity IDs when no engine World
+/// is connected. These are still wrapped as real `hecs::Entity` bit patterns,
+/// so scripts can store, compare, and round-trip handles using the same API
+/// real engine entities will use.
+static STUB_ENTITY_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Track whether we've logged the "ECS not connected" warning.
 static ECS_WARNED: AtomicBool = AtomicBool::new(false);
@@ -34,8 +36,31 @@ static ECS_WARNED: AtomicBool = AtomicBool::new(false);
 /// Provides methods for entity introspection and component access.
 /// Note: Component get/set operations are currently stubs pending
 /// engine integration with the actual hecs::World.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LuaEntity(pub Entity);
+
+impl LuaEntity {
+    /// Wrap a real `hecs::Entity` for Lua.
+    pub fn from_entity(entity: Entity) -> Self {
+        Self(entity)
+    }
+
+    /// Reconstruct a Lua entity handle from its stable hecs bit pattern.
+    pub fn from_bits(bits: u64) -> Option<Self> {
+        Entity::from_bits(bits).map(Self)
+    }
+
+    /// Create a deterministic stub handle for development mode.
+    fn stub(next_id: u64) -> LuaResult<Self> {
+        // hecs Entity bits: high 32 bits = generation, low 32 bits = id.
+        // Generation 1 is enough for stub handles and keeps the bit pattern
+        // valid for `Entity::from_bits`.
+        let generation: u64 = 1;
+        let entity_bits = (generation << 32) | (next_id & 0xffff_ffff);
+        Self::from_bits(entity_bits)
+            .ok_or_else(|| LuaError::RuntimeError("failed to create stub entity handle".into()))
+    }
+}
 
 impl LuaUserData for LuaEntity {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
@@ -47,6 +72,12 @@ impl LuaUserData for LuaEntity {
         // Returns a unique 64-bit identifier that encodes both ID and generation.
         // Useful for storing entity references externally or serialization.
         methods.add_method("to_bits", |_, this, ()| Ok(this.0.to_bits().get()));
+
+        // entity:equals(other) -> bool
+        methods.add_method("equals", |_, this, other: LuaAnyUserData| {
+            let other = other.borrow::<LuaEntity>()?;
+            Ok(this.0 == other.0)
+        });
 
         // entity:get(component_name) -> table or nil
         // Stub: Returns nil. Real implementation needs World access.
@@ -126,19 +157,8 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
                 log::trace!("[ecs]   component: {}", pair.0);
             }
 
-            // Generate incrementing fake entity ID (MEDIUM-8)
-            // This ensures each entity can be compared correctly
             let fake_id = STUB_ENTITY_COUNTER.fetch_add(1, Ordering::Relaxed);
-
-            // Create a fake Entity with the incrementing ID
-            // hecs Entity bits encoding: high 32 bits = generation (must be non-zero), low 32 bits = id
-            // We use generation 1 for all stub entities
-            let generation: u64 = 1;
-            let entity_bits = (generation << 32) | (fake_id as u64);
-            let entity = Entity::from_bits(entity_bits)
-                .expect("Entity::from_bits should succeed with valid generation");
-
-            Ok(LuaEntity(entity))
+            LuaEntity::stub(fake_id)
         })?,
     )?;
 
@@ -189,6 +209,15 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
             // Real implementation would query World for entity with matching Name component
             Ok(Option::<LuaEntity>::None)
         })?,
+    )?;
+
+    // world.entity_from_bits(bits) -> LuaEntity or nil
+    // Reconstructs an entity handle from `entity:to_bits()`. This is already
+    // the real hecs handle format, so once a World bridge exists scripts do
+    // not need a migration.
+    world_table.set(
+        "entity_from_bits",
+        lua.create_function(|_, bits: u64| Ok(LuaEntity::from_bits(bits)))?,
     )?;
 
     // world.despawn(entity)
@@ -243,6 +272,7 @@ mod tests {
         assert!(world.contains_key("query").unwrap());
         assert!(world.contains_key("find_by_name").unwrap());
         assert!(world.contains_key("despawn").unwrap());
+        assert!(world.contains_key("entity_from_bits").unwrap());
         assert!(world.contains_key("entity_count").unwrap());
     }
 
@@ -421,12 +451,38 @@ mod tests {
         let generation: u64 = 1;
         let id: u64 = 42;
         let bits = (generation << 32) | id;
-        let entity =
-            LuaEntity(Entity::from_bits(bits).expect("should create entity from valid bits"));
+        let entity = LuaEntity::from_bits(bits).expect("should create entity from valid bits");
         // Entity created with id 42 should have id 42
         assert_eq!(entity.0.id(), 42);
         // to_bits returns a non-zero value
         assert!(entity.0.to_bits().get() > 0);
+    }
+
+    #[test]
+    fn test_entity_from_bits_round_trip() {
+        let lua = create_lua_with_ecs();
+        lua.load(
+            r#"
+            local e1 = world.spawn({ name = "roundtrip" })
+            local bits = e1:to_bits()
+            local e2 = world.entity_from_bits(bits)
+            assert(e2 ~= nil, "entity_from_bits should reconstruct handle")
+            assert(e1:equals(e2), "round-tripped handle should compare equal")
+            assert(e1:id() == e2:id(), "round-tripped handle should keep id")
+        "#,
+        )
+        .exec()
+        .expect("entity handles should round-trip through bits");
+    }
+
+    #[test]
+    fn test_entity_from_bits_rejects_zero() {
+        let lua = create_lua_with_ecs();
+        let result: LuaValue = lua
+            .load("return world.entity_from_bits(0)")
+            .eval()
+            .expect("entity_from_bits should not error on invalid bits");
+        assert!(result.is_nil());
     }
 
     #[test]
