@@ -6,6 +6,10 @@
 
 use crate::Vec4;
 
+/// Epsilon for geometric comparisons (near-zero length, parallelism checks).
+/// Used in `ortho_iterate`, `from_to_rotation`, and similar functions.
+const GEOMETRIC_EPSILON: f32 = 1e-6;
+
 /// 4x4 matrix type (column-major)
 pub type Mat4 = [[f32; 4]; 4];
 
@@ -140,6 +144,35 @@ pub fn get_column(m: Mat4, col: usize) -> Vec4 {
     Vec4::new(m[col][0], m[col][1], m[col][2], m[col][3])
 }
 
+/// Set a column of a matrix
+pub fn set_column(m: &mut Mat4, col: usize, v: Vec4) {
+    m[col][0] = v.x;
+    m[col][1] = v.y;
+    m[col][2] = v.z;
+    m[col][3] = v.w;
+}
+
+/// Get a row vector from a matrix
+pub fn get_row(m: Mat4, row: usize) -> Vec4 {
+    Vec4::new(m[0][row], m[1][row], m[2][row], m[3][row])
+}
+
+/// Set a row of a matrix
+pub fn set_row(m: &mut Mat4, row: usize, v: Vec4) {
+    m[0][row] = v.x;
+    m[1][row] = v.y;
+    m[2][row] = v.z;
+    m[3][row] = v.w;
+}
+
+/// Negate a row of a matrix (used for view matrix transformation)
+pub fn negate_row(m: &mut Mat4, row: usize) {
+    m[0][row] = -m[0][row];
+    m[1][row] = -m[1][row];
+    m[2][row] = -m[2][row];
+    m[3][row] = -m[3][row];
+}
+
 /// Transpose a matrix
 pub fn transpose(m: Mat4) -> Mat4 {
     [
@@ -148,6 +181,138 @@ pub fn transpose(m: Mat4) -> Mat4 {
         [m[0][2], m[1][2], m[2][2], m[3][2]],
         [m[0][3], m[1][3], m[2][3], m[3][3]],
     ]
+}
+
+/// Outer product of two Vec4: result[i][j] = a[i] * b[j]
+///
+/// Creates a matrix where each column is `a` scaled by the corresponding
+/// component of `b`.
+pub fn outer_product(a: Vec4, b: Vec4) -> Mat4 {
+    [
+        [a.x * b.x, a.y * b.x, a.z * b.x, a.w * b.x],
+        [a.x * b.y, a.y * b.y, a.z * b.y, a.w * b.y],
+        [a.x * b.z, a.y * b.z, a.z * b.z, a.w * b.z],
+        [a.x * b.w, a.y * b.w, a.z * b.w, a.w * b.w],
+    ]
+}
+
+/// Matrix addition: result = a + b
+#[allow(clippy::needless_range_loop)]
+pub fn add(a: Mat4, b: Mat4) -> Mat4 {
+    let mut result = [[0.0; 4]; 4];
+    for i in 0..4 {
+        for j in 0..4 {
+            result[i][j] = a[i][j] + b[i][j];
+        }
+    }
+    result
+}
+
+/// Scalar multiplication: result = m * s
+#[allow(clippy::needless_range_loop)]
+pub fn scale_by(m: Mat4, s: f32) -> Mat4 {
+    let mut result = [[0.0; 4]; 4];
+    for i in 0..4 {
+        for j in 0..4 {
+            result[i][j] = m[i][j] * s;
+        }
+    }
+    result
+}
+
+/// Create a diagonal scale matrix from a Vec4
+pub fn scale(s: Vec4) -> Mat4 {
+    [
+        [s.x, 0.0, 0.0, 0.0],
+        [0.0, s.y, 0.0, 0.0],
+        [0.0, 0.0, s.z, 0.0],
+        [0.0, 0.0, 0.0, s.w],
+    ]
+}
+
+/// Re-orthogonalize a matrix to prevent numerical drift.
+///
+/// Uses one iteration of a Gram-Schmidt-like process, similar to Engine4D's
+/// `OrthoIterate`. This should be called periodically on rotation matrices
+/// that accumulate over many frames.
+///
+/// The algorithm:
+/// 1. Normalize each column
+/// 2. Remove mutual projections between columns
+pub fn ortho_iterate(mut m: Mat4) -> Mat4 {
+
+    // Normalize columns
+    for i in 0..4 {
+        let col = get_column(m, i);
+        let mag = col.length();
+        if mag < GEOMETRIC_EPSILON {
+            return IDENTITY; // Degenerate matrix, return identity to avoid inconsistent state
+        }
+        set_column(&mut m, i, col * (1.0 / mag));
+    }
+
+    // Compute M^T * M (gives dot products between columns)
+    let mt = mul(transpose(m), m);
+
+    // Remove mutual projections and re-normalize
+    let mut result = IDENTITY;
+    for i in 0..4 {
+        let mut sum = get_column(m, i);
+        for j in 0..4 {
+            if i != j {
+                let col_j = get_column(m, j);
+                sum = sum + col_j * (-0.5 * mt[i][j]);
+            }
+        }
+        // Re-normalize after projection removal to ensure unit-length columns
+        set_column(&mut result, i, sum.normalized());
+    }
+
+    result
+}
+
+/// Create a rotation matrix that rotates `from` direction to `to` direction.
+///
+/// Vectors are normalized internally for robustness. Uses the Householder
+/// reflection method: two reflections compose to a rotation.
+///
+/// For anti-parallel vectors (180° rotation), uses a two-step rotation through
+/// a perpendicular intermediate axis to avoid numerical instability.
+pub fn from_to_rotation(from: Vec4, to: Vec4) -> Mat4 {
+    let from = from.normalized();
+    let to = to.normalized();
+    let c = from + to;
+    let mag_sq = c.length_squared();
+
+    if mag_sq < GEOMETRIC_EPSILON {
+        // Vectors are nearly anti-parallel. The Householder method becomes unstable
+        // when from + to ≈ 0. Use two-step rotation through a perpendicular axis.
+        //
+        // SAFETY: find_perpendicular returns a vector orthogonal to `from`, so
+        // (from + perp).length_squared() ≈ 2.0, always >> GEOMETRIC_EPSILON.
+        // Recursion depth is therefore at most 1.
+        let perp = find_perpendicular(from);
+        let r1 = from_to_rotation(from, perp);
+        let r2 = from_to_rotation(perp, to);
+        return mul(r2, r1);
+    }
+
+    // First reflection: reflect across the hyperplane perpendicular to (from + to)
+    // This is a Householder reflection: I - 2 * (c ⊗ c) / |c|²
+    let s = add(IDENTITY, scale_by(outer_product(c, c), -2.0 / mag_sq));
+
+    // Transform `to` by this reflection
+    let s_to = transform(s, to);
+
+    // Second reflection: across the hyperplane perpendicular to (to - S*to)
+    // The composition of these two reflections gives the rotation
+    add(s, outer_product(to * -2.0, s_to))
+}
+
+/// Find a unit vector perpendicular to the given vector.
+/// Delegates to `Vec4::find_perpendicular`.
+fn find_perpendicular(v: Vec4) -> Vec4 {
+    v.find_perpendicular()
 }
 
 #[cfg(test)]
@@ -316,5 +481,207 @@ mod tests {
         let col0 = get_column(m, 0);
         assert!(vec_approx_eq(col0, Vec4::new(1.0, 0.0, 0.0, 0.0)),
             "Column 0 should be X axis for YZ rotation");
+    }
+
+    #[test]
+    fn test_set_column() {
+        let mut m = IDENTITY;
+        set_column(&mut m, 1, Vec4::new(0.0, 2.0, 0.0, 0.0));
+        let col1 = get_column(m, 1);
+        assert!(vec_approx_eq(col1, Vec4::new(0.0, 2.0, 0.0, 0.0)));
+    }
+
+    #[test]
+    fn test_set_row() {
+        let mut m = IDENTITY;
+        set_row(&mut m, 2, Vec4::new(1.0, 2.0, 3.0, 4.0));
+        let row2 = get_row(m, 2);
+        assert!(vec_approx_eq(row2, Vec4::new(1.0, 2.0, 3.0, 4.0)));
+    }
+
+    #[test]
+    fn test_negate_row() {
+        let mut m = IDENTITY;
+        negate_row(&mut m, 2);
+        let row2 = get_row(m, 2);
+        assert!(vec_approx_eq(row2, Vec4::new(0.0, 0.0, -1.0, 0.0)));
+    }
+
+    #[test]
+    fn test_outer_product() {
+        let a = Vec4::new(1.0, 2.0, 0.0, 0.0);
+        let b = Vec4::new(3.0, 0.0, 0.0, 0.0);
+        let m = outer_product(a, b);
+
+        // Column 0 should be a * b.x = (3, 6, 0, 0)
+        let col0 = get_column(m, 0);
+        assert!(vec_approx_eq(col0, Vec4::new(3.0, 6.0, 0.0, 0.0)));
+
+        // Other columns should be zero (b.y = b.z = b.w = 0)
+        let col1 = get_column(m, 1);
+        assert!(vec_approx_eq(col1, Vec4::ZERO));
+    }
+
+    #[test]
+    fn test_add() {
+        let a = plane_rotation(0.5, 0, 1);
+        let result = add(a, IDENTITY);
+
+        // Diagonal elements should be original + 1
+        assert!(approx_eq(result[0][0], a[0][0] + 1.0));
+        assert!(approx_eq(result[1][1], a[1][1] + 1.0));
+    }
+
+    #[test]
+    fn test_scale_matrix() {
+        let s = scale(Vec4::new(2.0, 3.0, 4.0, 5.0));
+        let v = Vec4::new(1.0, 1.0, 1.0, 1.0);
+        let result = transform(s, v);
+        assert!(vec_approx_eq(result, Vec4::new(2.0, 3.0, 4.0, 5.0)));
+    }
+
+    #[test]
+    fn test_ortho_iterate_preserves_orthogonal() {
+        // A rotation matrix is already orthogonal - ortho_iterate should preserve it
+        let m = plane_rotation(0.7, 0, 2);
+        let result = ortho_iterate(m);
+
+        // Should still be approximately equal
+        assert!(mat_approx_eq(m, result),
+            "ortho_iterate should preserve orthogonal matrices");
+    }
+
+    #[test]
+    fn test_ortho_iterate_fixes_drift() {
+        // Create a slightly non-orthogonal matrix by adding small errors
+        let mut m = plane_rotation(0.5, 1, 2);
+        m[0][0] += 0.01;
+        m[1][1] -= 0.01;
+
+        let result = ortho_iterate(m);
+
+        // Columns should now be orthonormal
+        let col0 = get_column(result, 0);
+        let col1 = get_column(result, 1);
+        let dot = col0.dot(col1);
+        assert!(dot.abs() < 0.01, "Columns should be orthogonal after ortho_iterate, dot = {}", dot);
+
+        // Column lengths should be near 1
+        assert!((col0.length() - 1.0).abs() < 0.01);
+        assert!((col1.length() - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_from_to_rotation_x_to_y() {
+        let from = Vec4::X;
+        let to = Vec4::Y;
+        let m = from_to_rotation(from, to);
+
+        // Should rotate X to Y
+        let result = transform(m, from);
+        assert!(vec_approx_eq(result, to),
+            "from_to_rotation(X, Y) * X should equal Y, got {:?}", result);
+    }
+
+    #[test]
+    fn test_from_to_rotation_preserves_orthogonal() {
+        let from = Vec4::new(1.0, 0.0, 1.0, 0.0).normalized();
+        let to = Vec4::new(0.0, 1.0, 0.0, 1.0).normalized();
+        let m = from_to_rotation(from, to);
+
+        // Result should rotate `from` to `to`
+        let result = transform(m, from);
+        let dot = result.dot(to);
+        assert!(dot > 0.99, "from_to_rotation should rotate from to to, dot = {}", dot);
+    }
+
+    #[test]
+    fn test_from_to_rotation_same_direction() {
+        let v = Vec4::new(1.0, 2.0, 3.0, 4.0).normalized();
+        let m = from_to_rotation(v, v);
+
+        // Should be close to identity (no rotation needed)
+        let result = transform(m, v);
+        assert!(vec_approx_eq(result, v), "Identity rotation failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_from_to_rotation_opposite() {
+        // C1/T1: 180° rotation should work for all basis axes
+        let cases: Vec<(Vec4, Vec4)> = vec![
+            (Vec4::X, -Vec4::X),
+            (Vec4::Y, -Vec4::Y),
+            (Vec4::Z, -Vec4::Z),
+            (Vec4::W, -Vec4::W),
+        ];
+        for (from, to) in &cases {
+            let m = from_to_rotation(*from, *to);
+            let result = transform(m, *from);
+            assert!(vec_approx_eq(result, *to),
+                "180° rotation failed: from={:?} to={:?}, got {:?}", from, to, result);
+        }
+    }
+
+    #[test]
+    fn test_from_to_rotation_nearly_opposite() {
+        // Test stability for nearly anti-parallel vectors
+        let from = Vec4::X;
+        let to = Vec4::new(-1.0, 0.001, 0.0, 0.0).normalized();
+        let m = from_to_rotation(from, to);
+        let result = transform(m, from);
+        let dot = result.dot(to);
+        assert!(dot > 0.99, "Nearly opposite rotation failed, dot = {}", dot);
+    }
+
+    #[test]
+    fn test_from_to_rotation_opposite_diagonal() {
+        let from = Vec4::new(1.0, 1.0, 1.0, 1.0).normalized();
+        let to = -from;
+        let m = from_to_rotation(from, to);
+        let result = transform(m, from);
+        assert!(vec_approx_eq(result, to),
+            "180° diagonal rotation failed: got {:?}, expected {:?}", result, to);
+    }
+
+    /// Compute determinant of a 4x4 matrix using cofactor expansion
+    fn determinant(m: Mat4) -> f32 {
+        let a = m[0][0]; let b = m[1][0]; let c = m[2][0]; let d = m[3][0];
+        let e = m[0][1]; let f = m[1][1]; let g = m[2][1]; let h = m[3][1];
+        let i = m[0][2]; let j = m[1][2]; let k = m[2][2]; let l = m[3][2];
+        let mm = m[0][3]; let n = m[1][3]; let o = m[2][3]; let p = m[3][3];
+
+        a * (f*(k*p - l*o) - g*(j*p - l*n) + h*(j*o - k*n))
+       -b * (e*(k*p - l*o) - g*(i*p - l*mm) + h*(i*o - k*mm))
+       +c * (e*(j*p - l*n) - f*(i*p - l*mm) + h*(i*n - j*mm))
+       -d * (e*(j*o - k*n) - f*(i*o - k*mm) + g*(i*n - j*mm))
+    }
+
+    #[test]
+    fn test_from_to_rotation_is_proper_rotation() {
+        // T1 from review: verify det = +1 (proper rotation, not reflection)
+        let cases: Vec<(Vec4, Vec4)> = vec![
+            (Vec4::X, Vec4::Y),
+            (Vec4::X, -Vec4::X),   // anti-parallel
+            (Vec4::Y, -Vec4::Y),
+            (Vec4::new(1.0, 1.0, 1.0, 1.0).normalized(),
+             Vec4::new(-1.0, -1.0, -1.0, -1.0).normalized()),
+        ];
+        for (from, to) in &cases {
+            let m = from_to_rotation(*from, *to);
+            let det = determinant(m);
+            assert!((det - 1.0).abs() < 0.01,
+                "from_to_rotation({:?}, {:?}) should have det=1, got {}", from, to, det);
+        }
+    }
+
+    #[test]
+    fn test_ortho_iterate_degenerate_column() {
+        // T2: Matrix with a near-zero column should return identity
+        let mut m = IDENTITY;
+        set_column(&mut m, 2, Vec4::new(0.0, 0.0, 1e-12, 0.0)); // Near-zero column
+        let result = ortho_iterate(m);
+        // Should return identity rather than a partially normalized matrix
+        assert!(mat_approx_eq(result, IDENTITY),
+            "Degenerate ortho_iterate should return identity");
     }
 }
