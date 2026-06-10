@@ -671,12 +671,9 @@ fn collision_events_report_correct_keys() {
 
     // key_c should not appear in any events
     for event in &events {
-        match event.kind {
-            CollisionEventKind::BodyVsBody { body_a, body_b } => {
-                assert_ne!(body_a, key_c);
-                assert_ne!(body_b, key_c);
-            }
-            _ => {}
+        if let CollisionEventKind::BodyVsBody { body_a, body_b } = event.kind {
+            assert_ne!(body_a, key_c);
+            assert_ne!(body_b, key_c);
         }
     }
 }

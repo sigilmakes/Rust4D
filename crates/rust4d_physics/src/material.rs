@@ -97,6 +97,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)] // deliberate sanity checks on preset values
     fn test_preset_constants() {
         // Test that presets have expected properties
         assert!(PhysicsMaterial::ICE.friction < 0.1);

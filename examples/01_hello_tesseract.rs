@@ -34,6 +34,7 @@ struct App {
     render_context: Option<RenderContext>,
     slice_pipeline: Option<SlicePipeline>,
     render_pipeline: Option<RenderPipeline>,
+    #[allow(dead_code)] // keeps ECS world alive alongside its derived GPU geometry
     world: World,
     geometry: RenderableGeometry,
     camera: Camera4D,

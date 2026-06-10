@@ -282,7 +282,7 @@ mod tests {
         std::fs::write(&path, "test_value = 1").unwrap();
 
         // Load it initially
-        lua.load(&std::fs::read_to_string(&path).unwrap())
+        lua.load(std::fs::read_to_string(&path).unwrap())
             .exec()
             .unwrap();
         let val: i64 = lua.load("return test_value").eval().unwrap();

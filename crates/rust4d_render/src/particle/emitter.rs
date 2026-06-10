@@ -304,8 +304,8 @@ mod tests {
         let v2: f32 = rng.gen_range(0.0..1.0);
 
         // Values should be in [0, 1)
-        assert!(v1 >= 0.0 && v1 < 1.0);
-        assert!(v2 >= 0.0 && v2 < 1.0);
+        assert!((0.0..1.0).contains(&v1));
+        assert!((0.0..1.0).contains(&v2));
 
         // Values should be different
         assert!((v1 - v2).abs() > 0.0001);

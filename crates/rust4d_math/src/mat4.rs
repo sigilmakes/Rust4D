@@ -239,6 +239,7 @@ pub fn scale(s: Vec4) -> Mat4 {
 /// The algorithm:
 /// 1. Normalize each column
 /// 2. Remove mutual projections between columns
+#[allow(clippy::needless_range_loop)] // index pairs (i, j) into mt are clearest here
 pub fn ortho_iterate(mut m: Mat4) -> Mat4 {
 
     // Normalize columns
@@ -261,7 +262,7 @@ pub fn ortho_iterate(mut m: Mat4) -> Mat4 {
         for j in 0..4 {
             if i != j {
                 let col_j = get_column(m, j);
-                sum = sum + col_j * (-0.5 * mt[i][j]);
+                sum += col_j * (-0.5 * mt[i][j]);
             }
         }
         // Re-normalize after projection removal to ensure unit-length columns

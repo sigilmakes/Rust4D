@@ -957,14 +957,13 @@ impl PhysicsWorld {
 
         // Emit exit events for pairs that are no longer overlapping
         for &(body_key, trigger_idx) in &self.active_triggers {
-            if !current_overlaps.contains(&(body_key, trigger_idx)) {
-                if self.bodies.contains_key(body_key) {
+            if !current_overlaps.contains(&(body_key, trigger_idx))
+                && self.bodies.contains_key(body_key) {
                     self.collision_events.push(CollisionEvent {
                         kind: CollisionEventKind::TriggerExit { body: body_key, trigger_index: trigger_idx },
                         contact: None,
                     });
                 }
-            }
         }
 
         self.active_triggers = current_overlaps;
@@ -2046,7 +2045,7 @@ mod tests {
         let ray = Ray4D::new(Vec4::new(0.0, 5.0, 0.0, 0.0), -Vec4::Y);
         let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
 
-        assert!(hits.len() >= 1);
+        assert!(!hits.is_empty());
         match hits[0].target {
             RayTarget::Static(0) => {}
             _ => panic!("Expected static hit at index 0"),
@@ -2619,7 +2618,7 @@ mod tests {
 
     #[test]
     fn test_line_of_sight_clear() {
-        let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+        let world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
 
         // No obstacles
         let clear = world.line_of_sight(

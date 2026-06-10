@@ -198,13 +198,12 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 
-            WindowEvent::KeyboardInput { event, .. } => {
-                if event.state == ElementState::Pressed {
+            WindowEvent::KeyboardInput { event, .. }
+                if event.state == ElementState::Pressed => {
                     if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
                         event_loop.exit();
                     }
                 }
-            }
 
             WindowEvent::Resized(size) => {
                 if let Some(ctx) = &mut self.render_context {

@@ -104,6 +104,7 @@ impl EasingFunction {
     ///
     /// If you need `FromStr` for integration with other Rust APIs (e.g., serde, clap),
     /// you can use the [`std::str::FromStr`] implementation which wraps this method.
+    #[allow(clippy::should_implement_trait)] // FromStr IS implemented; this is the documented Option-returning convenience
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "linear" => Some(Self::Linear),
