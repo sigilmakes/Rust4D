@@ -50,19 +50,26 @@ impl CharacterController4D {
         self.body_key
     }
 
-    /// Apply horizontal movement (XZW plane, preserves Y for gravity/jumping)
+    /// Apply movement as two semantic components (preserves Y for gravity/jumping)
     ///
-    /// The X and Z components are scaled by `config.move_speed`, while the W
-    /// component is scaled by `config.w_move_speed`. Y is preserved as-is
-    /// (gravity/jumping handles vertical movement).
-    pub fn apply_movement(&self, physics: &mut PhysicsWorld, movement: Vec4) {
-        let scaled = Vec4::new(
-            movement.x * self.config.move_speed,
-            movement.y * self.config.move_speed,
-            movement.z * self.config.move_speed,
-            movement.w * self.config.w_move_speed,
-        );
-        physics.apply_body_movement(self.body_key, scaled);
+    /// * `slice_dir` — movement within the player's current 3D slice (WASD).
+    ///   In world space this direction is orthogonal to the camera's ana axis;
+    ///   it is scaled uniformly by `config.move_speed`.
+    /// * `ana_dir` — deliberate movement along the camera's ana axis (Q/E),
+    ///   scaled uniformly by `config.w_move_speed`.
+    ///
+    /// # Why two parameters
+    ///
+    /// Speeds must scale each *semantic input* uniformly, never individual
+    /// world axes. The old single-vector API scaled X/Z by `move_speed` and W
+    /// by `w_move_speed` in world space; after a 4D camera rotation the WASD
+    /// direction mixes world Z and W, so anisotropic world-axis scaling tilted
+    /// the velocity across the slice plane. The camera then drifted along its
+    /// ana axis while walking, and every cross-section on screen morphed
+    /// (the "4D movement bug", see `tests/slice_invariant.rs`).
+    pub fn apply_movement(&self, physics: &mut PhysicsWorld, slice_dir: Vec4, ana_dir: Vec4) {
+        let velocity = slice_dir * self.config.move_speed + ana_dir * self.config.w_move_speed;
+        physics.apply_body_movement(self.body_key, velocity);
     }
 
     /// Attempt to jump. Returns true if successful (only works when grounded).
@@ -145,7 +152,7 @@ mod tests {
         let controller = CharacterController4D::new(body_key, config);
 
         // Apply movement (1, 0, 1, 0) with speed 2.0 => physics gets (2, 0, 2, 0)
-        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 1.0, 0.0));
+        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 1.0, 0.0), Vec4::ZERO);
 
         // Step physics and check position changed
         physics.step(1.0);
@@ -155,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_movement_uses_w_move_speed_for_w_axis() {
+    fn test_apply_movement_uses_w_move_speed_for_ana_component() {
         let mut physics = PhysicsWorld::with_config(PhysicsConfig::new(0.0)); // No gravity
         let body_key = physics.add_body(
             RigidBody4D::new_sphere(Vec4::new(0.0, 1.0, 0.0, 0.0), 0.5)
@@ -169,13 +176,53 @@ mod tests {
         };
         let controller = CharacterController4D::new(body_key, config);
 
-        // Apply movement with W component: W should use w_move_speed (5.0), X should use move_speed (2.0)
-        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 0.0, 1.0));
+        // Slice movement uses move_speed (2.0), ana movement uses w_move_speed (5.0)
+        controller.apply_movement(
+            &mut physics,
+            Vec4::new(1.0, 0.0, 0.0, 0.0),
+            Vec4::new(0.0, 0.0, 0.0, 1.0),
+        );
 
         physics.step(1.0);
         let pos = physics.body_position(body_key).unwrap();
         assert!((pos.x - 2.0).abs() < 0.01, "Expected x=2.0 (move_speed), got {}", pos.x);
         assert!((pos.w - 5.0).abs() < 0.01, "Expected w=5.0 (w_move_speed), got {}", pos.w);
+    }
+
+    #[test]
+    fn test_apply_movement_preserves_slice_direction_after_4d_rotation() {
+        // THE regression test for the 4D movement bug: a slice-movement
+        // direction that is orthogonal to the camera's ana axis must remain
+        // orthogonal after speed scaling, for ANY speed configuration.
+        // World-axis anisotropic scaling violated this.
+        let mut physics = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
+        let body_key = physics.add_body(
+            RigidBody4D::new_sphere(Vec4::ZERO, 0.5).with_body_type(BodyType::Kinematic),
+        );
+        let config = CharacterConfig {
+            move_speed: 3.0,
+            w_move_speed: 2.0, // anisotropic, like config/default.toml
+            jump_velocity: 8.0,
+        };
+        let controller = CharacterController4D::new(body_key, config);
+
+        // Camera rotated 45° in ZW: forward and ana both mix Z and W
+        let theta = std::f32::consts::FRAC_PI_4;
+        let forward = Vec4::new(0.0, 0.0, -theta.cos(), -theta.sin());
+        let ana = Vec4::new(0.0, 0.0, -theta.sin(), theta.cos());
+        assert!(forward.dot(ana).abs() < 1e-6, "test setup: forward ⊥ ana");
+
+        controller.apply_movement(&mut physics, forward, Vec4::ZERO);
+        physics.step(1.0);
+        let pos = physics.body_position(body_key).unwrap();
+
+        // The displacement must stay orthogonal to ana — zero drift across
+        // the slice plane.
+        let drift = pos.dot(ana);
+        assert!(
+            drift.abs() < 1e-4,
+            "slice movement drifted {drift} along the ana axis — shapes would morph"
+        );
     }
 
     #[test]
@@ -291,7 +338,7 @@ mod tests {
         );
 
         // apply_movement should not panic for stale key
-        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 1.0, 0.0));
+        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 1.0, 0.0), Vec4::ZERO);
     }
 
     #[test]
@@ -308,11 +355,11 @@ mod tests {
         );
 
         // First apply some movement
-        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 1.0, 0.0));
+        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 1.0, 0.0), Vec4::ZERO);
         physics.step(0.016);
 
         // Now apply zero movement -- should stop horizontal movement
-        controller.apply_movement(&mut physics, Vec4::ZERO);
+        controller.apply_movement(&mut physics, Vec4::ZERO, Vec4::ZERO);
         physics.step(0.016);
 
         let body = physics.get_body(body_key).unwrap();

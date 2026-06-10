@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(pos, spawn, "Initial position should match spawn");
 
         // Apply movement and step
-        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 0.0, 0.0));
+        controller.apply_movement(&mut physics, Vec4::new(1.0, 0.0, 0.0, 0.0), Vec4::ZERO);
         physics.step(0.016);
 
         // Position should have changed
@@ -176,7 +176,7 @@ mod tests {
 
         // Step physics until grounded
         for _ in 0..100 {
-            controller.apply_movement(&mut physics, Vec4::ZERO);
+            controller.apply_movement(&mut physics, Vec4::ZERO, Vec4::ZERO);
             physics.step(1.0 / 60.0);
         }
 
