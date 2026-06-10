@@ -22,6 +22,7 @@ cargo run --example 04_camera_exploration
 | 05_audio_demo | 4D spatial audio | AudioEngine, bus routing, W-distance attenuation |
 | ron_preview | Scene file viewer | RON scene loading |
 | headless_protocol | **Automated visual verification** — renders a scripted movement protocol offscreen, saves PPM frames + numeric slice-plane logs. No window needed. | Offscreen wgpu, slice invariant, screenshot diffing |
+| shape_showcase | **Primitive catalog verification** — renders all built-in primitives at 3 slice offsets × 3 orientations, saves PPM frames and triangle-count logs. | Mesh4D, polytopes, curved shapes, visual regression |
 
 ## Learning Path
 

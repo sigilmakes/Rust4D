@@ -40,7 +40,7 @@ This is not just a visualization trick - the engine actually computes 4D geometr
 
 ## Features
 
-- **True 4D Geometry**: All primitives are mathematically defined in 4D space
+- **True 4D Geometry**: tesseract, hypersphere, spherinder, cubinder, duocylinder, and the regular 5-cell/16-cell/24-cell/600-cell — all mathematically defined in 4D space
 - **GPU-Accelerated Slicing**: Compute shaders slice tetrahedra in parallel
 - **4D Physics**: Gravity, collision detection, and rigid body dynamics in 4D
 - **FPS-Style Controls**: Navigate 4D space with intuitive WASD + Q/E controls
@@ -194,6 +194,7 @@ See [examples/README.md](examples/README.md) for the full example index and lear
 | [User Guide](docs/user-guide.md) — full feature reference | All users |
 | [Developer Guide](docs/developer-guide.md) — architecture, algorithms, testing, contributing | Contributors |
 | [The Mathematics of Rust4D](docs/4d-math.md) — rotors, SkipY, slicing, the slice invariant, conventions | Contributors |
+| [Shape Catalog](docs/shapes.md) — built-in 4D primitives, construction math, RON snippets, verification | Users & contributors |
 | [ARCHITECTURE.md](ARCHITECTURE.md) — crate structure and data flow | Contributors |
 
 ## Inspiration

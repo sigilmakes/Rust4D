@@ -8,6 +8,7 @@ mismatches between these layers.
 
 Related reading:
 - [Developer Guide](./developer-guide.md) — architecture and algorithms
+- [Shape Catalog](./shapes.md) — built-in primitives, construction math, scene syntax
 - [Getting Started](./getting-started.md) — intuition for 4D space
 - `.agents/skills/` — condensed working rules for these conventions
 

@@ -10,6 +10,7 @@ Welcome to the Rust4D documentation. This is a 4D rendering engine written in Ru
 | [User Guide](./user-guide.md) | Comprehensive feature reference | All users |
 | [Developer Guide](./developer-guide.md) | Architecture, algorithms, contributing | Contributors |
 | [The Mathematics of Rust4D](./4d-math.md) | Rotors, SkipY, slicing, the slice invariant, conventions | Contributors |
+| [Shape Catalog](./shapes.md) | Built-in 4D primitives, construction math, scene syntax, verification | Users & contributors |
 
 ## Quick Start
 
