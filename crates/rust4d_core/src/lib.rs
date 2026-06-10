@@ -28,7 +28,7 @@ pub use transform::Transform4D;
 pub use entity::{Material, ShapeRef, DirtyFlags, EntityTemplate};
 pub use world::{World, HierarchyError};
 pub use components::{Name, Tags, PhysicsBody, Parent, Children};
-pub use shapes::ShapeTemplate;
+pub use shapes::{ColliderHint, ShapeTemplate};
 pub use scene::{Scene, SceneLoadError, SceneSaveError, SceneError, ActiveScene};
 pub use scene_manager::SceneManager;
 pub use asset_error::AssetError;

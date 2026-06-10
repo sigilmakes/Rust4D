@@ -274,16 +274,17 @@ impl ActiveScene {
                         entity_template.transform.position.w,
                     );
 
-                    // Get half-extent from shape
-                    let half_extent = match &entity_template.shape {
-                        ShapeTemplate::Tesseract { size } => size / 2.0,
-                        ShapeTemplate::Hyperplane { .. } => 1.0, // shouldn't be dynamic, but fallback
-                    };
-
-                    let body = RigidBody4D::new_aabb(
-                        position,
-                        Vec4::new(half_extent, half_extent, half_extent, half_extent),
-                    )
+                    // Choose a collider from the shape's hint: spheres for
+                    // round shapes, conservative AABBs for everything else.
+                    let body = match entity_template.shape.collider_hint() {
+                        crate::shapes::ColliderHint::Sphere { radius } => {
+                            RigidBody4D::new_sphere(position, radius)
+                        }
+                        crate::shapes::ColliderHint::Aabb { half_extent } => RigidBody4D::new_aabb(
+                            position,
+                            Vec4::new(half_extent, half_extent, half_extent, half_extent),
+                        ),
+                    }
                     .with_body_type(BodyType::Dynamic)
                     .with_mass(10.0)
                     .with_material(PhysicsMaterial::WOOD);
