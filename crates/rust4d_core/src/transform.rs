@@ -2,8 +2,8 @@
 //!
 //! A Transform4D represents the position, rotation, and scale of an entity in 4D space.
 
-use rust4d_math::{Vec4, Rotor4};
-use serde::{Serialize, Deserialize};
+use rust4d_math::{Rotor4, Vec4};
+use serde::{Deserialize, Serialize};
 
 /// A 4D transform with position, rotation, and uniform scale
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -172,7 +172,11 @@ mod tests {
         let t = Transform4D::from_position_rotation(Vec4::ZERO, rotor);
         let p = Vec4::X;
         let transformed = t.transform_point(p);
-        assert!(vec_approx_eq(transformed, Vec4::Y), "Expected Y, got {:?}", transformed);
+        assert!(
+            vec_approx_eq(transformed, Vec4::Y),
+            "Expected Y, got {:?}",
+            transformed
+        );
     }
 
     #[test]
@@ -187,8 +191,11 @@ mod tests {
         // X * 2 = (2, 0, 0, 0), rotated 90° in XY = (0, 2, 0, 0), + (10, 0, 0, 0) = (10, 2, 0, 0)
         let p = Vec4::X;
         let transformed = t.transform_point(p);
-        assert!(vec_approx_eq(transformed, Vec4::new(10.0, 2.0, 0.0, 0.0)),
-            "Expected (10, 2, 0, 0), got {:?}", transformed);
+        assert!(
+            vec_approx_eq(transformed, Vec4::new(10.0, 2.0, 0.0, 0.0)),
+            "Expected (10, 2, 0, 0), got {:?}",
+            transformed
+        );
     }
 
     #[test]

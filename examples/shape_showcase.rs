@@ -42,7 +42,9 @@ impl ShowcaseShape {
     fn geometry(&self) -> RenderableGeometry {
         let shape = self.template.create_shape();
         let mut geom = RenderableGeometry::new();
-        let material = Material { base_color: self.color };
+        let material = Material {
+            base_color: self.color,
+        };
         geom.add_components_with_color(
             &Transform4D::identity(),
             shape.as_ref(),
@@ -78,7 +80,10 @@ impl HeadlessGpu {
         .expect("no GPU adapter available");
 
         let info = adapter.get_info();
-        println!("[GPU] adapter: {} ({:?}, {:?})", info.name, info.device_type, info.backend);
+        println!(
+            "[GPU] adapter: {} ({:?}, {:?})",
+            info.name, info.device_type, info.backend
+        );
 
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
@@ -134,8 +139,11 @@ impl HeadlessGpu {
     }
 
     fn upload_geometry(&mut self, geometry: &RenderableGeometry) {
-        self.slice_pipeline
-            .upload_tetrahedra(&self.device, &geometry.vertices, &geometry.tetrahedra);
+        self.slice_pipeline.upload_tetrahedra(
+            &self.device,
+            &geometry.vertices,
+            &geometry.tetrahedra,
+        );
         println!(
             "[GPU] uploaded {} vertices, {} tetrahedra",
             geometry.vertex_count(),
@@ -152,7 +160,8 @@ impl HeadlessGpu {
             camera_matrix: camera.rotation_matrix(),
             camera_position: [pos.x, pos.y, pos.z, pos.w],
         };
-        self.slice_pipeline.update_params(&self.queue, &slice_params);
+        self.slice_pipeline
+            .update_params(&self.queue, &slice_params);
 
         let projection_matrix = perspective_matrix(
             40.0_f32.to_radians(),
@@ -302,7 +311,10 @@ fn shapes() -> Vec<ShowcaseShape> {
         },
         ShowcaseShape {
             name: "hypersphere",
-            template: ShapeTemplate::Hypersphere { radius: 1.25, subdivisions: 2 },
+            template: ShapeTemplate::Hypersphere {
+                radius: 1.25,
+                subdivisions: 2,
+            },
             color: [0.35, 0.70, 1.0, 1.0],
             radius: 1.25,
         },
@@ -332,19 +344,31 @@ fn shapes() -> Vec<ShowcaseShape> {
         },
         ShowcaseShape {
             name: "spherinder",
-            template: ShapeTemplate::Spherinder { radius: 1.05, half_height: 1.25, subdivisions: 2 },
+            template: ShapeTemplate::Spherinder {
+                radius: 1.05,
+                half_height: 1.25,
+                subdivisions: 2,
+            },
             color: [0.28, 0.95, 0.88, 1.0],
             radius: 1.65,
         },
         ShowcaseShape {
             name: "cubinder",
-            template: ShapeTemplate::Cubinder { radius: 1.05, half_size: 0.9, segments: 32 },
+            template: ShapeTemplate::Cubinder {
+                radius: 1.05,
+                half_size: 0.9,
+                segments: 32,
+            },
             color: [0.95, 0.72, 0.24, 1.0],
             radius: 1.65,
         },
         ShowcaseShape {
             name: "duocylinder",
-            template: ShapeTemplate::Duocylinder { radius_xy: 1.0, radius_zw: 1.0, segments: 32 },
+            template: ShapeTemplate::Duocylinder {
+                radius_xy: 1.0,
+                radius_zw: 1.0,
+                segments: 32,
+            },
             color: [0.40, 0.65, 1.0, 1.0],
             radius: 1.45,
         },
@@ -423,7 +447,11 @@ mod tests {
         for shape in shapes() {
             let geom = shape.geometry();
             assert!(geom.vertex_count() > 0, "{} has no vertices", shape.name);
-            assert!(geom.tetrahedron_count() > 0, "{} has no tetrahedra", shape.name);
+            assert!(
+                geom.tetrahedron_count() > 0,
+                "{} has no tetrahedra",
+                shape.name
+            );
         }
     }
 
@@ -431,6 +459,9 @@ mod tests {
     fn test_showcase_gpu_types_still_match() {
         // Keeps this example honest if the pipeline types change.
         assert_eq!(std::mem::size_of::<rust4d_render::pipeline::Vertex4D>(), 32);
-        assert_eq!(std::mem::size_of::<rust4d_render::pipeline::GpuTetrahedron>(), 16);
+        assert_eq!(
+            std::mem::size_of::<rust4d_render::pipeline::GpuTetrahedron>(),
+            16
+        );
     }
 }

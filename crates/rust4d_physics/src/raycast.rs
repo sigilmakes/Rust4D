@@ -2,8 +2,8 @@
 //!
 //! Provides ray intersection tests against spheres, AABBs, and planes.
 
+use crate::shapes::{Collider, Plane4D, Sphere4D, AABB4D};
 use rust4d_math::{Ray4D, Vec4};
-use crate::shapes::{Collider, Sphere4D, AABB4D, Plane4D};
 
 /// Information about a ray hit
 #[derive(Clone, Copy, Debug)]
@@ -71,7 +71,12 @@ pub fn ray_vs_aabb(ray: &Ray4D, aabb: &AABB4D) -> Option<RayHit> {
 
     // Check each axis using the slab method
     let origin = [ray.origin.x, ray.origin.y, ray.origin.z, ray.origin.w];
-    let dir = [ray.direction.x, ray.direction.y, ray.direction.z, ray.direction.w];
+    let dir = [
+        ray.direction.x,
+        ray.direction.y,
+        ray.direction.z,
+        ray.direction.w,
+    ];
     let mins = [aabb.min.x, aabb.min.y, aabb.min.z, aabb.min.w];
     let maxs = [aabb.max.x, aabb.max.y, aabb.max.z, aabb.max.w];
 
@@ -132,10 +137,34 @@ pub fn ray_vs_aabb(ray: &Ray4D, aabb: &AABB4D) -> Option<RayHit> {
             }
         }
         match best_axis {
-            0 => normal.x = if exit_origin[0] > (mins[0] + maxs[0]) * 0.5 { 1.0 } else { -1.0 },
-            1 => normal.y = if exit_origin[1] > (mins[1] + maxs[1]) * 0.5 { 1.0 } else { -1.0 },
-            2 => normal.z = if exit_origin[2] > (mins[2] + maxs[2]) * 0.5 { 1.0 } else { -1.0 },
-            3 => normal.w = if exit_origin[3] > (mins[3] + maxs[3]) * 0.5 { 1.0 } else { -1.0 },
+            0 => {
+                normal.x = if exit_origin[0] > (mins[0] + maxs[0]) * 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+            1 => {
+                normal.y = if exit_origin[1] > (mins[1] + maxs[1]) * 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+            2 => {
+                normal.z = if exit_origin[2] > (mins[2] + maxs[2]) * 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+            3 => {
+                normal.w = if exit_origin[3] > (mins[3] + maxs[3]) * 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
             _ => unreachable!(),
         }
         return Some(RayHit {
@@ -181,7 +210,11 @@ pub fn ray_vs_plane(ray: &Ray4D, plane: &Plane4D) -> Option<RayHit> {
 
     let point = ray.point_at(t);
     // Normal always faces toward the ray origin side
-    let normal = if denom < 0.0 { plane.normal } else { -plane.normal };
+    let normal = if denom < 0.0 {
+        plane.normal
+    } else {
+        -plane.normal
+    };
 
     Some(RayHit {
         distance: t,
@@ -295,8 +328,11 @@ mod tests {
         let hit = ray_vs_aabb(&ray, &aabb).expect("Should hit exit");
 
         // Should hit exit face at x=0.5
-        assert!((hit.point.x - 0.5).abs() < 0.01,
-            "Exit point x should be 0.5, got {}", hit.point.x);
+        assert!(
+            (hit.point.x - 0.5).abs() < 0.01,
+            "Exit point x should be 0.5, got {}",
+            hit.point.x
+        );
         assert!(hit.distance > 0.0, "Distance should be positive");
     }
 

@@ -3,9 +3,9 @@
 //! Collects sprites during a frame and provides sorted output for rendering
 //! with proper transparency handling.
 
-use std::collections::HashMap;
-use rust4d_math::Vec4;
 use super::types::{Sprite, SpriteSheet};
+use rust4d_math::Vec4;
+use std::collections::HashMap;
 
 /// Batch renderer for sprites
 ///
@@ -93,7 +93,9 @@ impl SpriteBatch {
             let dist_a = a.distance_3d(camera_pos);
             let dist_b = b.distance_3d(camera_pos);
             // Sort by distance descending (far sprites first)
-            dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
+            dist_b
+                .partial_cmp(&dist_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
         sorted
     }
@@ -103,10 +105,12 @@ impl SpriteBatch {
     /// Returns sprites that have non-zero alpha after W-fade,
     /// sorted back to front.
     pub fn get_visible_sorted(&self, camera_pos: Vec4, current_w: f32) -> Vec<(&Sprite, f32)> {
-        let mut visible: Vec<(&Sprite, f32)> = self.sprites
+        let mut visible: Vec<(&Sprite, f32)> = self
+            .sprites
             .iter()
             .filter_map(|sprite| {
-                let w_fade = Self::calculate_w_fade(sprite.position.w, current_w, sprite.w_fade_range);
+                let w_fade =
+                    Self::calculate_w_fade(sprite.position.w, current_w, sprite.w_fade_range);
                 let final_alpha = sprite.color_tint[3] * w_fade;
                 if final_alpha > 0.001 {
                     Some((sprite, final_alpha))
@@ -119,7 +123,9 @@ impl SpriteBatch {
         visible.sort_by(|a, b| {
             let dist_a = a.0.distance_3d(camera_pos);
             let dist_b = b.0.distance_3d(camera_pos);
-            dist_b.partial_cmp(&dist_a).unwrap_or(std::cmp::Ordering::Equal)
+            dist_b
+                .partial_cmp(&dist_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         visible

@@ -94,7 +94,10 @@ fn stale_key_does_not_alias_new_body() {
     let key2 = world.add_body(RigidBody4D::new_sphere(Vec4::new(2.0, 0.0, 0.0, 0.0), 0.5));
 
     // key1 is stale; key2 is valid
-    assert!(world.get_body(key1).is_none(), "Stale key must not resolve to new body");
+    assert!(
+        world.get_body(key1).is_none(),
+        "Stale key must not resolve to new body"
+    );
     assert!(world.get_body(key2).is_some());
     assert_ne!(key1, key2);
 }
@@ -234,10 +237,7 @@ fn zero_movement_then_step_no_drift() {
 #[test]
 fn raycast_very_large_max_distance() {
     let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
-    let key = world.add_body(RigidBody4D::new_sphere(
-        Vec4::new(5.0, 0.0, 0.0, 0.0),
-        1.0,
-    ));
+    let key = world.add_body(RigidBody4D::new_sphere(Vec4::new(5.0, 0.0, 0.0, 0.0), 1.0));
 
     let ray = Ray4D::new(Vec4::ZERO, Vec4::X);
     let hits = world.raycast(&ray, 1e12, CollisionLayer::ALL);
@@ -257,20 +257,14 @@ fn raycast_very_large_max_distance() {
 #[test]
 fn raycast_zero_max_distance() {
     let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
-    world.add_body(RigidBody4D::new_sphere(
-        Vec4::new(0.5, 0.0, 0.0, 0.0),
-        1.0,
-    ));
+    world.add_body(RigidBody4D::new_sphere(Vec4::new(0.5, 0.0, 0.0, 0.0), 1.0));
 
     let ray = Ray4D::new(Vec4::ZERO, Vec4::X);
     // The ray origin is inside the sphere, so the exit point distance is > 0.
     // With max_distance = 0, it should miss because hit.distance > 0.
     let hits = world.raycast(&ray, 0.0, CollisionLayer::ALL);
     // Even if origin is inside, exit point distance > 0, so with max_distance=0 nothing should match
-    assert!(
-        hits.is_empty(),
-        "Zero max_distance should yield no hits"
-    );
+    assert!(hits.is_empty(), "Zero max_distance should yield no hits");
 }
 
 /// Ray originating inside a sphere should hit the exit point.
@@ -355,10 +349,7 @@ fn raycast_very_small_sphere_off_axis_misses() {
 fn raycast_nearest_large_max_distance() {
     let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
 
-    let near = world.add_body(RigidBody4D::new_sphere(
-        Vec4::new(3.0, 0.0, 0.0, 0.0),
-        0.5,
-    ));
+    let near = world.add_body(RigidBody4D::new_sphere(Vec4::new(3.0, 0.0, 0.0, 0.0), 0.5));
     world.add_body(RigidBody4D::new_sphere(
         Vec4::new(100.0, 0.0, 0.0, 0.0),
         0.5,
@@ -384,10 +375,7 @@ fn raycast_hits_body_and_static_sorted() {
     world.add_static_collider(StaticCollider::floor(0.0, PhysicsMaterial::CONCRETE));
 
     // Body sphere at (0, 5, 0, 0) -- above floor
-    world.add_body(RigidBody4D::new_sphere(
-        Vec4::new(0.0, 5.0, 0.0, 0.0),
-        1.0,
-    ));
+    world.add_body(RigidBody4D::new_sphere(Vec4::new(0.0, 5.0, 0.0, 0.0), 1.0));
 
     // Ray shooting downward from high above
     let ray = Ray4D::new(Vec4::new(0.0, 20.0, 0.0, 0.0), -Vec4::Y);
@@ -410,10 +398,8 @@ fn raycast_hits_body_and_static_sorted() {
 fn zero_mass_body_collision_no_panic() {
     let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
 
-    let body_a = RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 0.5)
-        .with_mass(0.0);
-    let body_b = RigidBody4D::new_sphere(Vec4::new(0.8, 0.0, 0.0, 0.0), 0.5)
-        .with_mass(0.0);
+    let body_a = RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 0.5).with_mass(0.0);
+    let body_b = RigidBody4D::new_sphere(Vec4::new(0.8, 0.0, 0.0, 0.0), 0.5).with_mass(0.0);
 
     world.add_body(body_a);
     world.add_body(body_b);
@@ -443,7 +429,10 @@ fn zero_mass_vs_normal_mass_no_panic() {
     // Neither body should have NaN position
     let pos_zero = world.body_position(key_zero).unwrap();
     let pos_normal = world.body_position(key_normal).unwrap();
-    assert!(!pos_zero.x.is_nan(), "Zero-mass body should not produce NaN");
+    assert!(
+        !pos_zero.x.is_nan(),
+        "Zero-mass body should not produce NaN"
+    );
     assert!(
         !pos_normal.x.is_nan(),
         "Normal body should not produce NaN from zero-mass collision"
@@ -498,10 +487,7 @@ fn multiple_triggers_on_same_body() {
     let indices: Vec<usize> = enter_events
         .iter()
         .map(|e| {
-            if let CollisionEventKind::TriggerEnter {
-                trigger_index, ..
-            } = e.kind
-            {
+            if let CollisionEventKind::TriggerEnter { trigger_index, .. } = e.kind {
                 trigger_index
             } else {
                 unreachable!()
@@ -642,18 +628,9 @@ fn collision_events_report_correct_keys() {
     let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
 
     // Three non-overlapping bodies -- only first two overlap
-    let key_a = world.add_body(RigidBody4D::new_sphere(
-        Vec4::new(0.0, 0.0, 0.0, 0.0),
-        0.5,
-    ));
-    let key_b = world.add_body(RigidBody4D::new_sphere(
-        Vec4::new(0.8, 0.0, 0.0, 0.0),
-        0.5,
-    ));
-    let key_c = world.add_body(RigidBody4D::new_sphere(
-        Vec4::new(10.0, 0.0, 0.0, 0.0),
-        0.5,
-    ));
+    let key_a = world.add_body(RigidBody4D::new_sphere(Vec4::new(0.0, 0.0, 0.0, 0.0), 0.5));
+    let key_b = world.add_body(RigidBody4D::new_sphere(Vec4::new(0.8, 0.0, 0.0, 0.0), 0.5));
+    let key_c = world.add_body(RigidBody4D::new_sphere(Vec4::new(10.0, 0.0, 0.0, 0.0), 0.5));
 
     world.step(0.016);
     let events = world.drain_collision_events();
@@ -684,10 +661,7 @@ fn removed_body_during_simulation_no_panic() {
     let mut world = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
 
     let key_a = world.add_body(RigidBody4D::new_sphere(Vec4::ZERO, 0.5));
-    let key_b = world.add_body(RigidBody4D::new_sphere(
-        Vec4::new(0.8, 0.0, 0.0, 0.0),
-        0.5,
-    ));
+    let key_b = world.add_body(RigidBody4D::new_sphere(Vec4::new(0.8, 0.0, 0.0, 0.0), 0.5));
 
     // Step once to establish collision
     world.step(0.016);
@@ -748,7 +722,9 @@ fn raycast_empty_world() {
     let ray = Ray4D::new(Vec4::ZERO, Vec4::X);
     let hits = world.raycast(&ray, 100.0, CollisionLayer::ALL);
     assert!(hits.is_empty());
-    assert!(world.raycast_nearest(&ray, 100.0, CollisionLayer::ALL).is_none());
+    assert!(world
+        .raycast_nearest(&ray, 100.0, CollisionLayer::ALL)
+        .is_none());
 }
 
 /// A dynamic body with gravity disabled colliding with another should still produce events.

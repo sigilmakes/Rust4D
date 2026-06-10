@@ -3,9 +3,9 @@
 //! This module converts the abstract shape data from rust4d_core into
 //! GPU-compatible vertex and tetrahedra buffers.
 
-use rust4d_core::{World, Material, Transform4D, ShapeRef};
+use crate::pipeline::{GpuTetrahedron, Vertex4D};
+use rust4d_core::{Material, ShapeRef, Transform4D, World};
 use rust4d_math::Vec4;
-use crate::pipeline::{Vertex4D, GpuTetrahedron};
 
 /// GPU-ready geometry collected from entities
 ///
@@ -46,9 +46,16 @@ impl RenderableGeometry {
     ///
     /// Iterates all entities with Transform4D, ShapeRef, and Material components
     /// using ECS queries.
-    pub fn from_world_with_color(world: &World, color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4]) -> Self {
+    pub fn from_world_with_color(
+        world: &World,
+        color_fn: &dyn Fn(&Vec4, &Material) -> [f32; 4],
+    ) -> Self {
         let mut result = Self::new();
-        for (_entity, (transform, shape, material)) in world.ecs().query::<(&Transform4D, &ShapeRef, &Material)>().iter() {
+        for (_entity, (transform, shape, material)) in world
+            .ecs()
+            .query::<(&Transform4D, &ShapeRef, &Material)>()
+            .iter()
+        {
             result.add_components_with_color(transform, shape.as_shape(), material, color_fn);
         }
         result
@@ -142,7 +149,11 @@ pub struct CheckerboardGeometry {
 impl CheckerboardGeometry {
     /// Create a new checkerboard with the given colors and cell size
     pub fn new(color_a: [f32; 4], color_b: [f32; 4], cell_size: f32) -> Self {
-        Self { color_a, color_b, cell_size }
+        Self {
+            color_a,
+            color_b,
+            cell_size,
+        }
     }
 
     /// Get the color for a vertex based on its XZ position
@@ -159,16 +170,14 @@ impl CheckerboardGeometry {
 
     /// Create a color function that applies checkerboard pattern
     pub fn color_fn(&self) -> impl Fn(&Vec4, &Material) -> [f32; 4] + '_ {
-        move |vertex, _material| {
-            self.color_for_position(vertex.x, vertex.z)
-        }
+        move |vertex, _material| self.color_for_position(vertex.x, vertex.z)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust4d_core::{ShapeRef, Tesseract4D, Transform4D, DirtyFlags};
+    use rust4d_core::{DirtyFlags, ShapeRef, Tesseract4D, Transform4D};
 
     fn spawn_test_entity(world: &mut World) -> rust4d_core::hecs::Entity {
         let tesseract = Tesseract4D::new(2.0);
@@ -195,7 +204,12 @@ mod tests {
         let transform = Transform4D::identity();
 
         let mut geom = RenderableGeometry::new();
-        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
+        geom.add_components_with_color(
+            &transform,
+            shape_ref.as_shape(),
+            &material,
+            &default_color_fn,
+        );
 
         assert_eq!(geom.vertex_count(), 16); // Tesseract has 16 vertices
         assert!(geom.tetrahedron_count() > 0);
@@ -225,10 +239,20 @@ mod tests {
         let material = Material::from_rgb(1.0, 0.5, 0.25);
         let transform = Transform4D::identity();
 
-        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
+        geom.add_components_with_color(
+            &transform,
+            shape_ref.as_shape(),
+            &material,
+            &default_color_fn,
+        );
         assert_eq!(geom.vertex_count(), 16);
 
-        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
+        geom.add_components_with_color(
+            &transform,
+            shape_ref.as_shape(),
+            &material,
+            &default_color_fn,
+        );
         assert_eq!(geom.vertex_count(), 32);
     }
 
@@ -240,7 +264,12 @@ mod tests {
         let transform = Transform4D::identity();
 
         let mut geom = RenderableGeometry::new();
-        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
+        geom.add_components_with_color(
+            &transform,
+            shape_ref.as_shape(),
+            &material,
+            &default_color_fn,
+        );
 
         assert!(geom.vertex_count() > 0);
         geom.clear();
@@ -286,12 +315,20 @@ mod tests {
         let transform = Transform4D::from_position(Vec4::new(10.0, 0.0, 0.0, 0.0));
 
         let mut geom = RenderableGeometry::new();
-        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
+        geom.add_components_with_color(
+            &transform,
+            shape_ref.as_shape(),
+            &material,
+            &default_color_fn,
+        );
 
         // All vertices should be offset by 10 in x
         for v in &geom.vertices {
-            assert!(v.position[0] >= 9.0 && v.position[0] <= 11.0,
-                "Vertex x should be around 10, got {}", v.position[0]);
+            assert!(
+                v.position[0] >= 9.0 && v.position[0] <= 11.0,
+                "Vertex x should be around 10, got {}",
+                v.position[0]
+            );
         }
     }
 
@@ -303,14 +340,26 @@ mod tests {
         let material = Material::from_rgb(1.0, 0.5, 0.25);
         let transform = Transform4D::identity();
 
-        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
+        geom.add_components_with_color(
+            &transform,
+            shape_ref.as_shape(),
+            &material,
+            &default_color_fn,
+        );
         let first_entity_verts = geom.vertex_count();
 
-        geom.add_components_with_color(&transform, shape_ref.as_shape(), &material, &default_color_fn);
+        geom.add_components_with_color(
+            &transform,
+            shape_ref.as_shape(),
+            &material,
+            &default_color_fn,
+        );
 
         // Second entity's tetrahedra should have indices >= first_entity_verts
         let second_tet = geom.tetrahedra.last().unwrap();
-        assert!(second_tet.v0 >= first_entity_verts as u32,
-            "Second entity's tetrahedra should have offset indices");
+        assert!(
+            second_tet.v0 >= first_entity_verts as u32,
+            "Second entity's tetrahedra should have offset indices"
+        );
     }
 }

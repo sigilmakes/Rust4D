@@ -20,19 +20,22 @@ use winit::{
     window::{Window, WindowId},
 };
 
+use rust4d_core::hecs;
 use rust4d_core::{
-    Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World, Tags, Name,
-    PhysicsConfig, PhysicsBody, RigidBody4D, StaticCollider, Hyperplane4D,
-};
-use rust4d_render::{
-    camera4d::Camera4D,
-    context::RenderContext,
-    pipeline::{perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline, MAX_OUTPUT_TRIANGLES},
-    RenderableGeometry, CheckerboardGeometry, position_gradient_color,
+    DirtyFlags, Hyperplane4D, Material, Name, PhysicsBody, PhysicsConfig, RigidBody4D, ShapeRef,
+    StaticCollider, Tags, Tesseract4D, Transform4D, World,
 };
 use rust4d_math::Vec4;
 use rust4d_physics::{BodyType, PhysicsMaterial};
-use rust4d_core::hecs;
+use rust4d_render::{
+    camera4d::Camera4D,
+    context::RenderContext,
+    pipeline::{
+        perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline,
+        MAX_OUTPUT_TRIANGLES,
+    },
+    position_gradient_color, CheckerboardGeometry, RenderableGeometry,
+};
 
 /// Application state
 struct App {
@@ -72,11 +75,26 @@ impl App {
 
         // Add falling tesseracts at different heights
         let spawn_positions = [
-            (Vec4::new(0.0, 5.0, 0.0, 0.0), Material::from_rgb(0.9, 0.3, 0.2)),
-            (Vec4::new(3.0, 8.0, 0.0, 0.0), Material::from_rgb(0.2, 0.9, 0.3)),
-            (Vec4::new(-3.0, 11.0, 0.0, 0.0), Material::from_rgb(0.2, 0.3, 0.9)),
-            (Vec4::new(0.0, 14.0, 2.0, 0.0), Material::from_rgb(0.9, 0.9, 0.2)),
-            (Vec4::new(1.5, 17.0, -1.5, 0.0), Material::from_rgb(0.9, 0.2, 0.9)),
+            (
+                Vec4::new(0.0, 5.0, 0.0, 0.0),
+                Material::from_rgb(0.9, 0.3, 0.2),
+            ),
+            (
+                Vec4::new(3.0, 8.0, 0.0, 0.0),
+                Material::from_rgb(0.2, 0.9, 0.3),
+            ),
+            (
+                Vec4::new(-3.0, 11.0, 0.0, 0.0),
+                Material::from_rgb(0.2, 0.3, 0.9),
+            ),
+            (
+                Vec4::new(0.0, 14.0, 2.0, 0.0),
+                Material::from_rgb(0.9, 0.9, 0.2),
+            ),
+            (
+                Vec4::new(1.5, 17.0, -1.5, 0.0),
+                Material::from_rgb(0.9, 0.2, 0.9),
+            ),
         ];
 
         for (i, (position, material)) in spawn_positions.iter().enumerate() {
@@ -134,22 +152,29 @@ impl App {
     fn build_geometry(world: &World) -> RenderableGeometry {
         let mut geometry = RenderableGeometry::new();
 
-        let checkerboard = CheckerboardGeometry::new(
-            [0.3, 0.3, 0.35, 1.0],
-            [0.6, 0.6, 0.65, 1.0],
-            2.0,
-        );
+        let checkerboard =
+            CheckerboardGeometry::new([0.3, 0.3, 0.35, 1.0], [0.6, 0.6, 0.65, 1.0], 2.0);
 
-        for (_entity, (transform, shape, material, tags)) in
-            world.ecs().query::<(&Transform4D, &ShapeRef, &Material, Option<&Tags>)>().iter()
+        for (_entity, (transform, shape, material, tags)) in world
+            .ecs()
+            .query::<(&Transform4D, &ShapeRef, &Material, Option<&Tags>)>()
+            .iter()
         {
             let is_dynamic = tags.map(|t| t.has("dynamic")).unwrap_or(false);
             if is_dynamic {
-                geometry.add_components_with_color(transform, shape.as_shape(), material, &position_gradient_color);
+                geometry.add_components_with_color(
+                    transform,
+                    shape.as_shape(),
+                    material,
+                    &position_gradient_color,
+                );
             } else {
-                geometry.add_components_with_color(transform, shape.as_shape(), material, &|v, _m| {
-                    checkerboard.color_for_position(v.x, v.z)
-                });
+                geometry.add_components_with_color(
+                    transform,
+                    shape.as_shape(),
+                    material,
+                    &|v, _m| checkerboard.color_for_position(v.x, v.z),
+                );
             }
         }
 
@@ -171,7 +196,8 @@ impl ApplicationHandler for App {
             );
 
             let render_context = pollster::block_on(RenderContext::new(window.clone()));
-            let mut slice_pipeline = SlicePipeline::new(&render_context.device, MAX_OUTPUT_TRIANGLES);
+            let mut slice_pipeline =
+                SlicePipeline::new(&render_context.device, MAX_OUTPUT_TRIANGLES);
             let mut render_pipeline =
                 RenderPipeline::new(&render_context.device, render_context.config.format);
 
@@ -198,12 +224,11 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 
-            WindowEvent::KeyboardInput { event, .. }
-                if event.state == ElementState::Pressed => {
-                    if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
-                        event_loop.exit();
-                    }
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
+                    event_loop.exit();
                 }
+            }
 
             WindowEvent::Resized(size) => {
                 if let Some(ctx) = &mut self.render_context {
@@ -226,7 +251,8 @@ impl ApplicationHandler for App {
                 if self.world.has_dirty_entities() {
                     self.geometry = Self::build_geometry(&self.world);
 
-                    if let (Some(sp), Some(ctx)) = (&mut self.slice_pipeline, &self.render_context) {
+                    if let (Some(sp), Some(ctx)) = (&mut self.slice_pipeline, &self.render_context)
+                    {
                         sp.upload_tetrahedra(
                             &ctx.device,
                             &self.geometry.vertices,
@@ -254,10 +280,17 @@ impl ApplicationHandler for App {
                     sp.update_params(&ctx.queue, &slice_params);
 
                     let render_uniforms = RenderUniforms {
-                        view_matrix: [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
-                                      [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+                        view_matrix: [
+                            [1.0, 0.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0],
+                        ],
                         projection_matrix: perspective_matrix(
-                            std::f32::consts::FRAC_PI_4, ctx.aspect_ratio(), 0.1, 100.0,
+                            std::f32::consts::FRAC_PI_4,
+                            ctx.aspect_ratio(),
+                            0.1,
+                            100.0,
                         ),
                         light_dir: [0.5, 1.0, 0.3],
                         _padding: 0.0,
@@ -273,16 +306,27 @@ impl ApplicationHandler for App {
                         Ok(o) => o,
                         Err(_) => return,
                     };
-                    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    let mut encoder = ctx.device.create_command_encoder(
-                        &wgpu::CommandEncoderDescriptor { label: None },
-                    );
+                    let view = output
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
+                    let mut encoder = ctx
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
                     sp.reset_counter(&ctx.queue);
                     sp.run_slice_pass(&mut encoder);
                     rp.prepare_indirect_draw(&mut encoder, sp.counter_buffer());
-                    rp.render(&mut encoder, &view, sp.output_buffer(),
-                        wgpu::Color { r: 0.02, g: 0.02, b: 0.08, a: 1.0 });
+                    rp.render(
+                        &mut encoder,
+                        &view,
+                        sp.output_buffer(),
+                        wgpu::Color {
+                            r: 0.02,
+                            g: 0.02,
+                            b: 0.08,
+                            a: 1.0,
+                        },
+                    );
 
                     ctx.queue.submit(std::iter::once(encoder.finish()));
                     output.present();

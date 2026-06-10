@@ -2,12 +2,12 @@
 //!
 //! Handles window creation, cursor capture/release, fullscreen toggle, and title updates.
 
+use crate::config::WindowConfig;
 use std::sync::Arc;
 use winit::{
     event_loop::ActiveEventLoop,
     window::{CursorGrabMode, Fullscreen, Window},
 };
-use crate::config::WindowConfig;
 
 /// Manages the application window and cursor state
 pub struct WindowSystem {
@@ -24,10 +24,7 @@ impl WindowSystem {
     ) -> Result<Self, WindowError> {
         let mut attrs = Window::default_attributes()
             .with_title(&config.title)
-            .with_inner_size(winit::dpi::LogicalSize::new(
-                config.width,
-                config.height,
-            ));
+            .with_inner_size(winit::dpi::LogicalSize::new(config.width, config.height));
 
         if config.fullscreen {
             attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(None)));
@@ -58,7 +55,8 @@ impl WindowSystem {
 
     /// Capture cursor for FPS-style controls
     pub fn capture_cursor(&mut self) -> bool {
-        let grab_result = self.window
+        let grab_result = self
+            .window
             .set_cursor_grab(CursorGrabMode::Locked)
             .or_else(|_| self.window.set_cursor_grab(CursorGrabMode::Confined));
 

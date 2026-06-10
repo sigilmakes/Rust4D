@@ -53,14 +53,24 @@ fn gallery_scene_loads_instantiates_and_builds_geometry() {
         assert!(variants.contains(&expected), "gallery missing {expected}");
     }
 
-    manager.instantiate(&name).expect("gallery should instantiate");
-    manager.push_scene(&name).expect("gallery should become active");
+    manager
+        .instantiate(&name)
+        .expect("gallery should instantiate");
+    manager
+        .push_scene(&name)
+        .expect("gallery should become active");
 
     let world = manager.active_world().expect("active gallery world");
     let geometry = build_geometry(world);
 
-    assert!(geometry.vertex_count() > 2_000, "gallery should contain substantial geometry");
-    assert!(geometry.tetrahedron_count() > 8_000, "gallery should upload all primitive meshes");
+    assert!(
+        geometry.vertex_count() > 2_000,
+        "gallery should contain substantial geometry"
+    );
+    assert!(
+        geometry.tetrahedron_count() > 8_000,
+        "gallery should upload all primitive meshes"
+    );
 
     let active = manager.active_scene().unwrap();
     assert_eq!(active.world.entity_count(), 10);

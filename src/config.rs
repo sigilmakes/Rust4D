@@ -5,8 +5,11 @@
 //! 2. `config/user.toml` (gitignored, user overrides)
 //! 3. Environment variables (`R4D_SECTION__KEY`)
 
-use figment::{Figment, providers::{Format, Toml, Env}};
-use serde::{Serialize, Deserialize};
+use figment::{
+    providers::{Env, Format, Toml},
+    Figment,
+};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 // Re-export PhysicsConfig from the physics crate for convenience

@@ -22,10 +22,7 @@ pub enum ScriptError {
     /// File watcher error (hot-reload)
     WatcherError(String),
     /// Module reload failed (old version continues running)
-    ModuleReloadError {
-        path: String,
-        error: mlua::Error,
-    },
+    ModuleReloadError { path: String, error: mlua::Error },
 }
 
 impl ScriptError {
@@ -72,7 +69,9 @@ impl std::error::Error for ScriptError {
             Self::IoError(_, e) => Some(e),
             Self::LuaError(e) => Some(e),
             Self::RuntimeError { error, .. } => Some(error),
-            Self::ReloadError { source: Some(e), .. } => Some(e.as_ref()),
+            Self::ReloadError {
+                source: Some(e), ..
+            } => Some(e.as_ref()),
             Self::ModuleReloadError { error, .. } => Some(error),
             _ => None,
         }

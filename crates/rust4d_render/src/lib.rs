@@ -19,27 +19,29 @@
 //! Shape geometry is defined in `rust4d_math`. This crate re-exports the shapes
 //! for convenience, but you can also import them directly from `rust4d_math`.
 
-pub mod context;
 pub mod camera4d;
+pub mod context;
+pub mod egui_overlay;
+pub mod particle;
 pub mod pipeline;
 pub mod renderable;
 pub mod sprite;
-pub mod particle;
-pub mod egui_overlay;
 
 // Re-export core types for convenience
-pub use rust4d_core::{World, Transform4D, Material, ShapeRef, DirtyFlags, Tags};
-pub use rust4d_core::{ConvexShape4D, Tetrahedron, Tesseract4D, Hyperplane4D};
-pub use rust4d_core::{Vec4, Rotor4, RotationPlane};
+pub use rust4d_core::{ConvexShape4D, Hyperplane4D, Tesseract4D, Tetrahedron};
+pub use rust4d_core::{DirtyFlags, Material, ShapeRef, Tags, Transform4D, World};
+pub use rust4d_core::{RotationPlane, Rotor4, Vec4};
 
 // Re-export renderable for easy access
-pub use renderable::{RenderableGeometry, CheckerboardGeometry, position_gradient_color};
+pub use renderable::{position_gradient_color, CheckerboardGeometry, RenderableGeometry};
 
 // Re-export sprite types for easy access
-pub use sprite::{Sprite, SpriteSheet, SpriteBatch, WFadeConfig};
+pub use sprite::{Sprite, SpriteBatch, SpriteSheet, WFadeConfig};
 
 // Re-export particle types for easy access
-pub use particle::{Particle, BlendMode, BurstConfig, EmitterConfig, ParticleEmitter, ParticleSystem};
+pub use particle::{
+    BlendMode, BurstConfig, EmitterConfig, Particle, ParticleEmitter, ParticleSystem,
+};
 
 // Re-export egui overlay types for easy access
-pub use egui_overlay::{EguiRenderer, HudContext, ScreenDescriptor, RawInput};
+pub use egui_overlay::{EguiRenderer, HudContext, RawInput, ScreenDescriptor};

@@ -21,12 +21,12 @@
 //! manager.update(dt);
 //! ```
 
-use std::collections::HashMap;
-use crate::{Scene, World};
-use crate::scene::{SceneError, ActiveScene};
-use crate::scene_transition::{SceneTransition, TransitionEffect};
+use crate::scene::{ActiveScene, SceneError};
 use crate::scene_loader::SceneLoader;
+use crate::scene_transition::{SceneTransition, TransitionEffect};
+use crate::{Scene, World};
 use rust4d_physics::PhysicsConfig;
+use std::collections::HashMap;
 
 /// Manages multiple scenes with a stack for overlays
 ///
@@ -114,7 +114,9 @@ impl SceneManager {
     /// The instantiated scene is stored but not automatically made active.
     /// Use `push_scene` to make it the current scene.
     pub fn instantiate(&mut self, template_name: &str) -> Result<(), SceneError> {
-        let template = self.templates.get(template_name)
+        let template = self
+            .templates
+            .get(template_name)
             .ok_or_else(|| SceneError::NotLoaded(template_name.to_string()))?;
 
         let active = ActiveScene::from_template(template, self.default_physics.clone());
@@ -161,7 +163,8 @@ impl SceneManager {
 
     /// Get a reference to the currently active scene (top of stack)
     pub fn active_scene(&self) -> Option<&ActiveScene> {
-        self.active_stack.last()
+        self.active_stack
+            .last()
             .and_then(|name| self.scenes.get(name))
     }
 
@@ -236,15 +239,9 @@ impl SceneManager {
             return Err(SceneError::NotLoaded(name.to_string()));
         }
 
-        let from = self.active_scene_name()
-            .unwrap_or("")
-            .to_string();
+        let from = self.active_scene_name().unwrap_or("").to_string();
 
-        self.transition = Some(SceneTransition::new(
-            from,
-            name.to_string(),
-            effect,
-        ));
+        self.transition = Some(SceneTransition::new(from, name.to_string(), effect));
 
         Ok(())
     }
@@ -346,7 +343,7 @@ impl SceneManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ShapeRef, Material, DirtyFlags, Transform4D, Name};
+    use crate::{DirtyFlags, Material, Name, ShapeRef, Transform4D};
     use rust4d_math::Tesseract4D;
 
     fn spawn_test_entity(world: &mut World) -> hecs::Entity {
@@ -368,8 +365,7 @@ mod tests {
 
     #[test]
     fn test_with_physics() {
-        let manager = SceneManager::new()
-            .with_physics(PhysicsConfig::new(-20.0));
+        let manager = SceneManager::new().with_physics(PhysicsConfig::new(-20.0));
         assert!(manager.default_physics.is_some());
         assert_eq!(manager.default_physics.unwrap().gravity, -20.0);
     }
@@ -551,12 +547,10 @@ mod tests {
 
     #[test]
     fn test_update() {
-        let mut manager = SceneManager::new()
-            .with_physics(PhysicsConfig::new(-20.0));
+        let mut manager = SceneManager::new().with_physics(PhysicsConfig::new(-20.0));
 
         // Create scene with physics
-        let scene = ActiveScene::new("Test")
-            .with_physics(PhysicsConfig::new(-20.0));
+        let scene = ActiveScene::new("Test").with_physics(PhysicsConfig::new(-20.0));
         manager.register_active_scene("test", scene);
         manager.push_scene("test").unwrap();
 
@@ -569,8 +563,7 @@ mod tests {
         let mut manager = SceneManager::new();
 
         // Create and register a template
-        let template = Scene::new("My Template")
-            .with_gravity(-15.0);
+        let template = Scene::new("My Template").with_gravity(-15.0);
         manager.register_template(template);
 
         // Should be able to retrieve it
@@ -636,10 +629,7 @@ mod tests {
     fn test_switch_with_transition_not_loaded() {
         let mut manager = SceneManager::new();
 
-        let result = manager.switch_to_with_transition(
-            "nonexistent",
-            TransitionEffect::Instant,
-        );
+        let result = manager.switch_to_with_transition("nonexistent", TransitionEffect::Instant);
         assert!(result.is_err());
         match result {
             Err(SceneError::NotLoaded(name)) => assert_eq!(name, "nonexistent"),
@@ -657,7 +647,9 @@ mod tests {
         manager.push_scene("scene1").unwrap();
 
         // Instant transition should complete in one update
-        manager.switch_to_with_transition("scene2", TransitionEffect::Instant).unwrap();
+        manager
+            .switch_to_with_transition("scene2", TransitionEffect::Instant)
+            .unwrap();
         let completed = manager.update_transition();
         assert!(completed);
         assert!(!manager.is_transitioning());
@@ -676,12 +668,14 @@ mod tests {
         assert!(!manager.is_transitioning());
 
         // Start transition
-        manager.switch_to_with_transition(
-            "test",
-            TransitionEffect::Fade {
-                duration: std::time::Duration::from_secs(10),
-            },
-        ).unwrap();
+        manager
+            .switch_to_with_transition(
+                "test",
+                TransitionEffect::Fade {
+                    duration: std::time::Duration::from_secs(10),
+                },
+            )
+            .unwrap();
         assert!(manager.is_transitioning());
     }
 

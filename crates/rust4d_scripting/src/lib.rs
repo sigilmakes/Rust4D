@@ -317,25 +317,13 @@ mod tests {
         engine.call_shutdown().unwrap();
 
         // Verify the lifecycle log
-        let count: i64 = engine
-            .lua()
-            .load("return #lifecycle_log")
-            .eval()
-            .unwrap();
+        let count: i64 = engine.lua().load("return #lifecycle_log").eval().unwrap();
         assert_eq!(count, 4);
 
-        let first: String = engine
-            .lua()
-            .load("return lifecycle_log[1]")
-            .eval()
-            .unwrap();
+        let first: String = engine.lua().load("return lifecycle_log[1]").eval().unwrap();
         assert_eq!(first, "init");
 
-        let last: String = engine
-            .lua()
-            .load("return lifecycle_log[4]")
-            .eval()
-            .unwrap();
+        let last: String = engine.lua().load("return lifecycle_log[4]").eval().unwrap();
         assert_eq!(last, "shutdown");
     }
 
@@ -381,8 +369,7 @@ mod tests {
         let (dir, config) = create_game_dir();
 
         // Create a module
-        let mut module_file =
-            std::fs::File::create(dir.path().join("utils.lua")).unwrap();
+        let mut module_file = std::fs::File::create(dir.path().join("utils.lua")).unwrap();
         writeln!(module_file, "local M = {{}}").unwrap();
         writeln!(module_file, "function M.double(x) return x * 2 end").unwrap();
         writeln!(module_file, "return M").unwrap();

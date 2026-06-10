@@ -90,7 +90,7 @@
 mod context;
 mod renderer;
 
-pub use context::{HudContext, color32_to_rgba, rgba_to_color32};
+pub use context::{color32_to_rgba, rgba_to_color32, HudContext};
 pub use renderer::EguiRenderer;
 
 // Re-export key egui types for convenience

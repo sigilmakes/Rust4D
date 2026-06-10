@@ -11,7 +11,10 @@
 //! We model it as a grid of "pillars" - each pillar is a rectangular prism
 //! extending in W, decomposed into tetrahedra.
 
-use crate::{Vec4, shape::{ConvexShape4D, Tetrahedron}};
+use crate::{
+    shape::{ConvexShape4D, Tetrahedron},
+    Vec4,
+};
 use std::collections::HashSet;
 
 /// A hyperplane floor in local space - pure geometry without colors
@@ -46,12 +49,7 @@ impl Hyperplane4D {
     /// * `grid_size` - Number of cells along each axis
     /// * `w_extent` - Half-extent in W dimension (for slicing visibility)
     /// * `thickness` - Y thickness (bottom at y=0, top at y=thickness)
-    pub fn new(
-        size: f32,
-        grid_size: usize,
-        w_extent: f32,
-        thickness: f32,
-    ) -> Self {
+    pub fn new(size: f32, grid_size: usize, w_extent: f32, thickness: f32) -> Self {
         let mut vertices = Vec::new();
         let mut tetrahedra = Vec::new();
 
@@ -144,10 +142,30 @@ impl Hyperplane4D {
     /// Decompose a single cell (mini-tesseract) into tetrahedra using Kuhn triangulation
     fn decompose_cell_to_tetrahedra(base_idx: usize) -> Vec<Tetrahedron> {
         let permutations = [
-            [0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3], [0, 2, 3, 1], [0, 3, 1, 2], [0, 3, 2, 1],
-            [1, 0, 2, 3], [1, 0, 3, 2], [1, 2, 0, 3], [1, 2, 3, 0], [1, 3, 0, 2], [1, 3, 2, 0],
-            [2, 0, 1, 3], [2, 0, 3, 1], [2, 1, 0, 3], [2, 1, 3, 0], [2, 3, 0, 1], [2, 3, 1, 0],
-            [3, 0, 1, 2], [3, 0, 2, 1], [3, 1, 0, 2], [3, 1, 2, 0], [3, 2, 0, 1], [3, 2, 1, 0],
+            [0, 1, 2, 3],
+            [0, 1, 3, 2],
+            [0, 2, 1, 3],
+            [0, 2, 3, 1],
+            [0, 3, 1, 2],
+            [0, 3, 2, 1],
+            [1, 0, 2, 3],
+            [1, 0, 3, 2],
+            [1, 2, 0, 3],
+            [1, 2, 3, 0],
+            [1, 3, 0, 2],
+            [1, 3, 2, 0],
+            [2, 0, 1, 3],
+            [2, 0, 3, 1],
+            [2, 1, 0, 3],
+            [2, 1, 3, 0],
+            [2, 3, 0, 1],
+            [2, 3, 1, 0],
+            [3, 0, 1, 2],
+            [3, 0, 2, 1],
+            [3, 1, 0, 2],
+            [3, 1, 2, 0],
+            [3, 2, 0, 1],
+            [3, 2, 1, 0],
         ];
 
         let mut simplices = Vec::with_capacity(24);
@@ -218,8 +236,11 @@ mod tests {
 
         // Check that all vertices are in local space: y=0 to y=thickness
         for v in plane.vertices() {
-            assert!(v.y >= 0.0 && v.y <= 0.1,
-                "Vertex Y should be between 0 and thickness, got {}", v.y);
+            assert!(
+                v.y >= 0.0 && v.y <= 0.1,
+                "Vertex Y should be between 0 and thickness, got {}",
+                v.y
+            );
         }
     }
 

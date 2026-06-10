@@ -43,10 +43,8 @@ pub fn hypersphere(radius: f32, subdivisions: u32) -> Mesh4D {
     let mut mesh = super::polytopes::hexadecachoron(radius);
 
     for _ in 0..subdivisions {
-        let mut refined = Mesh4D::with_capacity(
-            mesh.vertex_count() * 4,
-            mesh.tetrahedron_count() * 8,
-        );
+        let mut refined =
+            Mesh4D::with_capacity(mesh.vertex_count() * 4, mesh.tetrahedron_count() * 8);
         for tet in mesh.tetrahedra() {
             // Gather the 10 points of the subdivision (4 corners + 6 edge
             // midpoints reprojected to the sphere). Midpoints are computed
@@ -150,9 +148,20 @@ pub fn cubinder(radius: f32, half_size: f32, segments: u32) -> Mesh4D {
         (radius * theta.cos(), radius * theta.sin())
     };
     let vert = |pool: &mut VertexPool, ring: usize, corner: usize| -> usize {
-        let key = (if ring == CENTER { u32::MAX } else { (ring % segments) as u32 }, corner as u32);
+        let key = (
+            if ring == CENTER {
+                u32::MAX
+            } else {
+                (ring % segments) as u32
+            },
+            corner as u32,
+        );
         let (z, w) = square[corner];
-        let (x, y) = if ring == CENTER { (0.0, 0.0) } else { circle_point(ring) };
+        let (x, y) = if ring == CENTER {
+            (0.0, 0.0)
+        } else {
+            circle_point(ring)
+        };
         pool.get(key, Vec4::new(x, y, z, w))
     };
 
@@ -164,7 +173,10 @@ pub fn cubinder(radius: f32, half_size: f32, segments: u32) -> Mesh4D {
         for tri in [[0usize, 1, 2], [0, 2, 3]] {
             let bottom = tri.map(|c| vert(&mut pool, i, c));
             let top = tri.map(|c| vert(&mut pool, i + 1, c));
-            split_prism([bottom[0], bottom[1], bottom[2], top[0], top[1], top[2]], &mut tets);
+            split_prism(
+                [bottom[0], bottom[1], bottom[2], top[0], top[1], top[2]],
+                &mut tets,
+            );
         }
     }
 
@@ -183,7 +195,10 @@ pub fn cubinder(radius: f32, half_size: f32, segments: u32) -> Mesh4D {
                 vert(&mut pool, i, c1),
                 vert(&mut pool, i + 1, c1),
             ];
-            split_prism([bottom[0], bottom[1], bottom[2], top[0], top[1], top[2]], &mut tets);
+            split_prism(
+                [bottom[0], bottom[1], bottom[2], top[0], top[1], top[2]],
+                &mut tets,
+            );
         }
     }
 
@@ -212,23 +227,24 @@ pub fn duocylinder(r1: f32, r2: f32, segments1: u32, segments2: u32) -> Mesh4D {
     // j on circle 2 (or AXIS2). The Clifford torus is the (i, j) grid;
     // each solid-torus piece fans toward its own axis circle.
     const AXIS: u32 = u32::MAX;
-    let vert = |pool: &mut VertexPool, i: usize, j: usize, on_axis_1: bool, on_axis_2: bool| -> usize {
-        let ki = if on_axis_1 { AXIS } else { (i % n1) as u32 };
-        let kj = if on_axis_2 { AXIS } else { (j % n2) as u32 };
-        let (x, y) = if on_axis_1 {
-            (0.0, 0.0)
-        } else {
-            let a = (i % n1) as f32 / n1 as f32 * std::f32::consts::TAU;
-            (r1 * a.cos(), r1 * a.sin())
+    let vert =
+        |pool: &mut VertexPool, i: usize, j: usize, on_axis_1: bool, on_axis_2: bool| -> usize {
+            let ki = if on_axis_1 { AXIS } else { (i % n1) as u32 };
+            let kj = if on_axis_2 { AXIS } else { (j % n2) as u32 };
+            let (x, y) = if on_axis_1 {
+                (0.0, 0.0)
+            } else {
+                let a = (i % n1) as f32 / n1 as f32 * std::f32::consts::TAU;
+                (r1 * a.cos(), r1 * a.sin())
+            };
+            let (z, w) = if on_axis_2 {
+                (0.0, 0.0)
+            } else {
+                let b = (j % n2) as f32 / n2 as f32 * std::f32::consts::TAU;
+                (r2 * b.cos(), r2 * b.sin())
+            };
+            pool.get((ki, kj), Vec4::new(x, y, z, w))
         };
-        let (z, w) = if on_axis_2 {
-            (0.0, 0.0)
-        } else {
-            let b = (j % n2) as f32 / n2 as f32 * std::f32::consts::TAU;
-            (r2 * b.cos(), r2 * b.sin())
-        };
-        pool.get((ki, kj), Vec4::new(x, y, z, w))
-    };
 
     let mut tets: Vec<Tetrahedron> = Vec::new();
 
@@ -246,7 +262,10 @@ pub fn duocylinder(r1: f32, r2: f32, segments1: u32, segments2: u32) -> Mesh4D {
                 vert(&mut pool, i + 1, j, false, false),
                 vert(&mut pool, i + 1, j + 1, false, false),
             ];
-            split_prism([bottom[0], bottom[1], bottom[2], top[0], top[1], top[2]], &mut tets);
+            split_prism(
+                [bottom[0], bottom[1], bottom[2], top[0], top[1], top[2]],
+                &mut tets,
+            );
         }
     }
 
@@ -263,7 +282,10 @@ pub fn duocylinder(r1: f32, r2: f32, segments1: u32, segments2: u32) -> Mesh4D {
                 vert(&mut pool, i, j + 1, false, false),
                 vert(&mut pool, i + 1, j + 1, false, false),
             ];
-            split_prism([bottom[0], bottom[1], bottom[2], top[0], top[1], top[2]], &mut tets);
+            split_prism(
+                [bottom[0], bottom[1], bottom[2], top[0], top[1], top[2]],
+                &mut tets,
+            );
         }
     }
 
@@ -288,7 +310,10 @@ struct VertexPool {
 
 impl VertexPool {
     fn new() -> Self {
-        Self { vertices: Vec::new(), index: HashMap::new() }
+        Self {
+            vertices: Vec::new(),
+            index: HashMap::new(),
+        }
     }
 
     fn get(&mut self, key: (u32, u32), position: Vec4) -> usize {
@@ -305,20 +330,49 @@ impl VertexPool {
 fn icosphere(radius: f32, subdivisions: u32) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
     let phi = (1.0 + 5.0f32.sqrt()) / 2.0;
     let mut verts: Vec<[f32; 3]> = vec![
-        [-1.0, phi, 0.0], [1.0, phi, 0.0], [-1.0, -phi, 0.0], [1.0, -phi, 0.0],
-        [0.0, -1.0, phi], [0.0, 1.0, phi], [0.0, -1.0, -phi], [0.0, 1.0, -phi],
-        [phi, 0.0, -1.0], [phi, 0.0, 1.0], [-phi, 0.0, -1.0], [-phi, 0.0, 1.0],
+        [-1.0, phi, 0.0],
+        [1.0, phi, 0.0],
+        [-1.0, -phi, 0.0],
+        [1.0, -phi, 0.0],
+        [0.0, -1.0, phi],
+        [0.0, 1.0, phi],
+        [0.0, -1.0, -phi],
+        [0.0, 1.0, -phi],
+        [phi, 0.0, -1.0],
+        [phi, 0.0, 1.0],
+        [-phi, 0.0, -1.0],
+        [-phi, 0.0, 1.0],
     ];
     let mut tris: Vec<[usize; 3]> = vec![
-        [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
-        [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-        [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
-        [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+        [0, 11, 5],
+        [0, 5, 1],
+        [0, 1, 7],
+        [0, 7, 10],
+        [0, 10, 11],
+        [1, 5, 9],
+        [5, 11, 4],
+        [11, 10, 2],
+        [10, 7, 6],
+        [7, 1, 8],
+        [3, 9, 4],
+        [3, 4, 2],
+        [3, 2, 6],
+        [3, 6, 8],
+        [3, 8, 9],
+        [4, 9, 5],
+        [2, 4, 11],
+        [6, 2, 10],
+        [8, 6, 7],
+        [9, 8, 1],
     ];
 
     let project = |v: [f32; 3]| -> [f32; 3] {
         let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-        [v[0] / len * radius, v[1] / len * radius, v[2] / len * radius]
+        [
+            v[0] / len * radius,
+            v[1] / len * radius,
+            v[2] / len * radius,
+        ]
     };
     for v in &mut verts {
         *v = project(*v);
@@ -380,12 +434,21 @@ mod tests {
         let v1 = hypersphere(1.0, 1).surface_volume() as f64;
         let v2 = hypersphere(1.0, 2).surface_volume() as f64;
         let v3 = hypersphere(1.0, 3).surface_volume() as f64;
-        assert!(v1 < v2 && v2 < v3 && v3 < exact, "monotone from below: {v1} {v2} {v3} {exact}");
-        assert!((exact - v3) / exact < 0.05, "d=3 within 5% of 2π²: {v3} vs {exact}");
+        assert!(
+            v1 < v2 && v2 < v3 && v3 < exact,
+            "monotone from below: {v1} {v2} {v3} {exact}"
+        );
+        assert!(
+            (exact - v3) / exact < 0.05,
+            "d=3 within 5% of 2π²: {v3} vs {exact}"
+        );
         // Each subdivision halves edge length; an O(h²) scheme must shrink
         // the error by ~4× per level. Pin convergence *order*, not just size.
         let ratio = (exact - v2) / (exact - v3);
-        assert!(ratio > 3.0, "expected quadratic convergence, error ratio {ratio}");
+        assert!(
+            ratio > 3.0,
+            "expected quadratic convergence, error ratio {ratio}"
+        );
     }
 
     #[test]

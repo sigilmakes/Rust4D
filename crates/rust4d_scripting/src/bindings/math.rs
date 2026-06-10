@@ -28,7 +28,7 @@
 //! This module is owned by Agent D2 (Math/Physics Bindings).
 
 use mlua::prelude::*;
-use rust4d_math::{Rotor4, RotationPlane, Vec4};
+use rust4d_math::{RotationPlane, Rotor4, Vec4};
 
 // Re-export Transform4D binding if rust4d_core is available
 // For now, we'll implement Transform4D bindings directly using the math crate
@@ -78,9 +78,7 @@ impl LuaUserData for LuaVec4 {
         methods.add_method("length_squared", |_, this, ()| Ok(this.0.length_squared()));
 
         // Normalize to unit length
-        methods.add_method("normalized", |_, this, ()| {
-            Ok(LuaVec4(this.0.normalized()))
-        });
+        methods.add_method("normalized", |_, this, ()| Ok(LuaVec4(this.0.normalized())));
 
         // Distance between two vectors
         methods.add_method("distance", |_, this, other: LuaVec4| {
@@ -218,9 +216,7 @@ impl LuaUserData for LuaRotor4 {
         methods.add_method("reverse", |_, this, ()| Ok(LuaRotor4(this.0.reverse())));
 
         // Normalize the rotor
-        methods.add_method("normalize", |_, this, ()| {
-            Ok(LuaRotor4(this.0.normalize()))
-        });
+        methods.add_method("normalize", |_, this, ()| Ok(LuaRotor4(this.0.normalize())));
 
         // Get magnitude
         methods.add_method("magnitude", |_, this, ()| Ok(this.0.magnitude()));

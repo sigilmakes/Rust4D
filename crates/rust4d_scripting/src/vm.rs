@@ -1,7 +1,7 @@
 //! Lua VM initialization and configuration
 
-use mlua::prelude::*;
 use crate::error::ScriptError;
+use mlua::prelude::*;
 
 /// Configuration for the scripting engine
 #[derive(Debug, Clone)]
@@ -59,14 +59,18 @@ pub fn create_lua_vm(config: &ScriptConfig) -> Result<Lua, ScriptError> {
         // Clear cpath to prevent loading native C modules from system paths
         package.set("cpath", "").map_err(ScriptError::LuaError)?;
         // Remove loadlib which can load arbitrary shared libraries
-        package.set("loadlib", LuaNil).map_err(ScriptError::LuaError)?;
+        package
+            .set("loadlib", LuaNil)
+            .map_err(ScriptError::LuaError)?;
     }
 
     // Remove dangerous standard library modules for sandboxing
     let globals = lua.globals();
     globals.set("os", LuaNil).map_err(ScriptError::LuaError)?;
     globals.set("io", LuaNil).map_err(ScriptError::LuaError)?;
-    globals.set("debug", LuaNil).map_err(ScriptError::LuaError)?;
+    globals
+        .set("debug", LuaNil)
+        .map_err(ScriptError::LuaError)?;
     globals
         .set("loadfile", LuaNil)
         .map_err(ScriptError::LuaError)?;
@@ -84,12 +88,10 @@ pub fn create_lua_vm(config: &ScriptConfig) -> Result<Lua, ScriptError> {
                     LuaValue::Boolean(b) => b.to_string(),
                     LuaValue::Integer(n) => n.to_string(),
                     LuaValue::Number(n) => n.to_string(),
-                    LuaValue::String(s) => {
-                        match s.to_str() {
-                            Ok(s) => s.to_string(),
-                            Err(_) => "<invalid utf8>".to_string(),
-                        }
-                    }
+                    LuaValue::String(s) => match s.to_str() {
+                        Ok(s) => s.to_string(),
+                        Err(_) => "<invalid utf8>".to_string(),
+                    },
                     other => format!("{:?}", other),
                 })
                 .collect();
@@ -117,9 +119,10 @@ pub fn create_lua_vm(config: &ScriptConfig) -> Result<Lua, ScriptError> {
             move |_lua, _debug| {
                 let prev = count_clone.fetch_add(1000, std::sync::atomic::Ordering::Relaxed);
                 if prev + 1000 > limit {
-                    return Err(mlua::Error::RuntimeError(
-                        format!("instruction limit exceeded ({})", limit),
-                    ));
+                    return Err(mlua::Error::RuntimeError(format!(
+                        "instruction limit exceeded ({})",
+                        limit
+                    )));
                 }
                 Ok(mlua::VmState::Continue)
             },
@@ -190,9 +193,7 @@ mod tests {
         let config = ScriptConfig::default();
         let lua = create_lua_vm(&config).unwrap();
         // Should not panic even though log isn't fully initialized
-        lua.load(r#"print("hello", 42, true, nil)"#)
-            .exec()
-            .unwrap();
+        lua.load(r#"print("hello", 42, true, nil)"#).exec().unwrap();
     }
 
     #[test]
@@ -202,10 +203,7 @@ mod tests {
             ..Default::default()
         };
         let lua = create_lua_vm(&config).unwrap();
-        let path: String = lua
-            .load("return package.path")
-            .eval()
-            .unwrap();
+        let path: String = lua.load("return package.path").eval().unwrap();
         assert!(path.contains("/tmp/test_scripts/?.lua"));
     }
 

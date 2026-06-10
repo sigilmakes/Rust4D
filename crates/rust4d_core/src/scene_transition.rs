@@ -171,11 +171,8 @@ mod tests {
 
     #[test]
     fn test_instant_alpha_is_one() {
-        let transition = SceneTransition::new(
-            "a".to_string(),
-            "b".to_string(),
-            TransitionEffect::Instant,
-        );
+        let transition =
+            SceneTransition::new("a".to_string(), "b".to_string(), TransitionEffect::Instant);
         assert_eq!(transition.alpha(), 1.0);
     }
 
@@ -283,7 +280,11 @@ mod tests {
 
         // Right after creation, progress should be near 0
         let initial_progress = transition.progress();
-        assert!(initial_progress <= 0.1, "Initial progress too high: {}", initial_progress);
+        assert!(
+            initial_progress <= 0.1,
+            "Initial progress too high: {}",
+            initial_progress
+        );
 
         // After updating with some time passed, progress should have increased
         std::thread::sleep(Duration::from_millis(50));

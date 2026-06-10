@@ -214,7 +214,10 @@ mod tests {
 
     #[test]
     fn test_aabb_from_center_half_extents() {
-        let aabb = AABB4D::from_center_half_extents(Vec4::new(1.0, 2.0, 3.0, 4.0), Vec4::new(0.5, 0.5, 0.5, 0.5));
+        let aabb = AABB4D::from_center_half_extents(
+            Vec4::new(1.0, 2.0, 3.0, 4.0),
+            Vec4::new(0.5, 0.5, 0.5, 0.5),
+        );
         assert_eq!(aabb.min, Vec4::new(0.5, 1.5, 2.5, 3.5));
         assert_eq!(aabb.max, Vec4::new(1.5, 2.5, 3.5, 4.5));
         assert_eq!(aabb.center(), Vec4::new(1.0, 2.0, 3.0, 4.0));

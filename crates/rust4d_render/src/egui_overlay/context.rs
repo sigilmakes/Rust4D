@@ -56,12 +56,21 @@ impl<'a> HudContext<'a> {
         let pos = Pos2::new(pos[0], pos[1]);
         let color = rgba_to_color32(color);
 
-        Area::new(egui::Id::new(("hud_text", pos.x as i32, pos.y as i32, text)))
-            .order(Order::Foreground)
-            .fixed_pos(pos)
-            .show(self.ctx, |ui| {
-                ui.label(RichText::new(text).font(FontId::proportional(size)).color(color));
-            });
+        Area::new(egui::Id::new((
+            "hud_text",
+            pos.x as i32,
+            pos.y as i32,
+            text,
+        )))
+        .order(Order::Foreground)
+        .fixed_pos(pos)
+        .show(self.ctx, |ui| {
+            ui.label(
+                RichText::new(text)
+                    .font(FontId::proportional(size))
+                    .color(color),
+            );
+        });
     }
 
     /// Draw text centered at screen position
@@ -76,13 +85,22 @@ impl<'a> HudContext<'a> {
         let pos = Pos2::new(pos[0], pos[1]);
         let color = rgba_to_color32(color);
 
-        Area::new(egui::Id::new(("hud_text_centered", pos.x as i32, pos.y as i32, text)))
-            .order(Order::Foreground)
-            .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-            .fixed_pos(pos)
-            .show(self.ctx, |ui| {
-                ui.label(RichText::new(text).font(FontId::proportional(size)).color(color));
-            });
+        Area::new(egui::Id::new((
+            "hud_text_centered",
+            pos.x as i32,
+            pos.y as i32,
+            text,
+        )))
+        .order(Order::Foreground)
+        .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+        .fixed_pos(pos)
+        .show(self.ctx, |ui| {
+            ui.label(
+                RichText::new(text)
+                    .font(FontId::proportional(size))
+                    .color(color),
+            );
+        });
     }
 
     /// Draw a filled rectangle
@@ -116,14 +134,23 @@ impl<'a> HudContext<'a> {
     pub fn rect_outline(&self, pos: [f32; 2], size: [f32; 2], color: [f32; 4], stroke_width: f32) {
         let color = rgba_to_color32(color);
 
-        Area::new(egui::Id::new(("hud_rect_outline", pos[0] as i32, pos[1] as i32)))
-            .order(Order::Foreground)
-            .fixed_pos(Pos2::new(pos[0], pos[1]))
-            .show(self.ctx, |ui| {
-                let (response, painter) =
-                    ui.allocate_painter(Vec2::new(size[0], size[1]), Sense::hover());
-                painter.rect_stroke(response.rect, CornerRadius::ZERO, Stroke::new(stroke_width, color), StrokeKind::Outside);
-            });
+        Area::new(egui::Id::new((
+            "hud_rect_outline",
+            pos[0] as i32,
+            pos[1] as i32,
+        )))
+        .order(Order::Foreground)
+        .fixed_pos(Pos2::new(pos[0], pos[1]))
+        .show(self.ctx, |ui| {
+            let (response, painter) =
+                ui.allocate_painter(Vec2::new(size[0], size[1]), Sense::hover());
+            painter.rect_stroke(
+                response.rect,
+                CornerRadius::ZERO,
+                Stroke::new(stroke_width, color),
+                StrokeKind::Outside,
+            );
+        });
     }
 
     /// Draw a progress bar
@@ -147,22 +174,26 @@ impl<'a> HudContext<'a> {
         let bg_color = rgba_to_color32(bg_color);
         let fill_color = rgba_to_color32(fill_color);
 
-        Area::new(egui::Id::new(("hud_progress", pos[0] as i32, pos[1] as i32)))
-            .order(Order::Foreground)
-            .fixed_pos(Pos2::new(pos[0], pos[1]))
-            .show(self.ctx, |ui| {
-                let (response, painter) =
-                    ui.allocate_painter(Vec2::new(size[0], size[1]), Sense::hover());
-                let rect = response.rect;
+        Area::new(egui::Id::new((
+            "hud_progress",
+            pos[0] as i32,
+            pos[1] as i32,
+        )))
+        .order(Order::Foreground)
+        .fixed_pos(Pos2::new(pos[0], pos[1]))
+        .show(self.ctx, |ui| {
+            let (response, painter) =
+                ui.allocate_painter(Vec2::new(size[0], size[1]), Sense::hover());
+            let rect = response.rect;
 
-                // Draw background
-                painter.rect_filled(rect, CornerRadius::ZERO, bg_color);
+            // Draw background
+            painter.rect_filled(rect, CornerRadius::ZERO, bg_color);
 
-                // Draw fill
-                let fill_width = rect.width() * progress;
-                let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_width, rect.height()));
-                painter.rect_filled(fill_rect, CornerRadius::ZERO, fill_color);
-            });
+            // Draw fill
+            let fill_width = rect.width() * progress;
+            let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_width, rect.height()));
+            painter.rect_filled(fill_rect, CornerRadius::ZERO, fill_color);
+        });
     }
 
     /// Flash the screen (for damage, pickups, etc)
@@ -180,8 +211,7 @@ impl<'a> HudContext<'a> {
             .order(Order::Background) // Behind other HUD elements but over scene
             .fixed_pos(Pos2::ZERO)
             .show(self.ctx, |ui| {
-                let (_response, painter) =
-                    ui.allocate_painter(screen.size(), Sense::hover());
+                let (_response, painter) = ui.allocate_painter(screen.size(), Sense::hover());
                 painter.rect_filled(screen, CornerRadius::ZERO, color);
             });
     }
@@ -276,7 +306,9 @@ mod tests {
             assert!(
                 (original[i] - back[i]).abs() < 0.02,
                 "Channel {}: original={}, back={}",
-                i, original[i], back[i]
+                i,
+                original[i],
+                back[i]
             );
         }
     }

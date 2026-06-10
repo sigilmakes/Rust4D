@@ -135,8 +135,7 @@ mod tests {
     #[test]
     fn test_attenuation_within_min_distance() {
         let listener = Vec4::ZERO;
-        let config = SpatialConfig::new(Vec4::new(0.5, 0.0, 0.0, 0.0))
-            .with_min_distance(1.0);
+        let config = SpatialConfig::new(Vec4::new(0.5, 0.0, 0.0, 0.0)).with_min_distance(1.0);
         let attenuation = calculate_attenuation(listener, &config);
         assert!((attenuation - 1.0).abs() < 0.0001);
     }
@@ -144,8 +143,7 @@ mod tests {
     #[test]
     fn test_attenuation_at_max_distance() {
         let listener = Vec4::ZERO;
-        let config = SpatialConfig::new(Vec4::new(50.0, 0.0, 0.0, 0.0))
-            .with_max_distance(50.0);
+        let config = SpatialConfig::new(Vec4::new(50.0, 0.0, 0.0, 0.0)).with_max_distance(50.0);
         let attenuation = calculate_attenuation(listener, &config);
         assert!(attenuation < 0.0001);
     }
@@ -153,8 +151,7 @@ mod tests {
     #[test]
     fn test_attenuation_beyond_max_distance() {
         let listener = Vec4::ZERO;
-        let config = SpatialConfig::new(Vec4::new(100.0, 0.0, 0.0, 0.0))
-            .with_max_distance(50.0);
+        let config = SpatialConfig::new(Vec4::new(100.0, 0.0, 0.0, 0.0)).with_max_distance(50.0);
         let attenuation = calculate_attenuation(listener, &config);
         assert_eq!(attenuation, 0.0);
     }

@@ -19,14 +19,17 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use rust4d_core::{Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World};
+use rust4d_core::{DirtyFlags, Material, ShapeRef, Tesseract4D, Transform4D, World};
+use rust4d_math::Vec4;
 use rust4d_render::{
     camera4d::Camera4D,
     context::RenderContext,
-    pipeline::{perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline, MAX_OUTPUT_TRIANGLES},
+    pipeline::{
+        perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline,
+        MAX_OUTPUT_TRIANGLES,
+    },
     RenderableGeometry,
 };
-use rust4d_math::Vec4;
 
 /// Application state
 struct App {
@@ -88,7 +91,8 @@ impl ApplicationHandler for App {
 
             // Initialize rendering
             let render_context = pollster::block_on(RenderContext::new(window.clone()));
-            let mut slice_pipeline = SlicePipeline::new(&render_context.device, MAX_OUTPUT_TRIANGLES);
+            let mut slice_pipeline =
+                SlicePipeline::new(&render_context.device, MAX_OUTPUT_TRIANGLES);
             let mut render_pipeline =
                 RenderPipeline::new(&render_context.device, render_context.config.format);
 
@@ -140,8 +144,18 @@ impl ApplicationHandler for App {
                     sp.update_params(&ctx.queue, &slice_params);
 
                     let render_uniforms = RenderUniforms {
-                        view_matrix: [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
-                        projection_matrix: perspective_matrix(std::f32::consts::FRAC_PI_4, ctx.aspect_ratio(), 0.1, 100.0),
+                        view_matrix: [
+                            [1.0, 0.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0],
+                        ],
+                        projection_matrix: perspective_matrix(
+                            std::f32::consts::FRAC_PI_4,
+                            ctx.aspect_ratio(),
+                            0.1,
+                            100.0,
+                        ),
                         light_dir: [0.5, 1.0, 0.3],
                         _padding: 0.0,
                         ambient_strength: 0.3,
@@ -156,13 +170,27 @@ impl ApplicationHandler for App {
                         Ok(o) => o,
                         Err(_) => return,
                     };
-                    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    let mut encoder = ctx.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+                    let view = output
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
+                    let mut encoder = ctx
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
                     sp.reset_counter(&ctx.queue);
                     sp.run_slice_pass(&mut encoder);
                     rp.prepare_indirect_draw(&mut encoder, sp.counter_buffer());
-                    rp.render(&mut encoder, &view, sp.output_buffer(), wgpu::Color { r: 0.02, g: 0.02, b: 0.08, a: 1.0 });
+                    rp.render(
+                        &mut encoder,
+                        &view,
+                        sp.output_buffer(),
+                        wgpu::Color {
+                            r: 0.02,
+                            g: 0.02,
+                            b: 0.08,
+                            a: 1.0,
+                        },
+                    );
 
                     ctx.queue.submit(std::iter::once(encoder.finish()));
                     output.present();

@@ -1,6 +1,6 @@
 //! Particle types and blend modes
 
-use rust4d_math::{Vec4, Interpolatable};
+use rust4d_math::{Interpolatable, Vec4};
 
 /// Individual particle in the particle system
 #[derive(Clone, Copy, Debug)]
@@ -300,8 +300,8 @@ mod tests {
             Vec4::ZERO,
             Vec4::ZERO,
             1.0,
-            1.0,   // initial size
-            0.0,   // end size
+            1.0,                  // initial size
+            0.0,                  // end size
             [1.0, 0.0, 0.0, 1.0], // initial color (red)
             [0.0, 1.0, 0.0, 0.0], // end color (green, transparent)
             0.0,

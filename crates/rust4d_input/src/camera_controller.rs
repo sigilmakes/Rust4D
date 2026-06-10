@@ -21,15 +21,15 @@ pub struct CameraController {
     right: bool,
     up: bool,
     down: bool,
-    ana: bool,     // Q - move toward +W (ana)
-    kata: bool,    // E - move toward -W (kata)
+    ana: bool,  // Q - move toward +W (ana)
+    kata: bool, // E - move toward -W (kata)
 
     // Jump state (for physics-based movement)
     jump_pressed: bool,
 
     // Mouse state
     mouse_pressed: bool,
-    w_rotation_mode: bool,  // Right-click held
+    w_rotation_mode: bool, // Right-click held
     pending_yaw: f32,
     pending_pitch: f32,
 
@@ -42,7 +42,7 @@ pub struct CameraController {
     pub w_move_speed: f32,
     pub mouse_sensitivity: f32,
     pub w_rotation_sensitivity: f32,
-    pub smoothing_half_life: f32,  // Exponential smoothing half-life in seconds
+    pub smoothing_half_life: f32, // Exponential smoothing half-life in seconds
     pub smoothing_enabled: bool,
 }
 
@@ -76,10 +76,10 @@ impl CameraController {
 
             move_speed: 3.0,
             w_move_speed: 2.0,
-            mouse_sensitivity: 0.002,  // Standard FPS sensitivity
+            mouse_sensitivity: 0.002, // Standard FPS sensitivity
             w_rotation_sensitivity: 0.005,
-            smoothing_half_life: 0.05,  // 50ms half-life when enabled
-            smoothing_enabled: false,   // Disabled by default for responsive FPS feel
+            smoothing_half_life: 0.05, // 50ms half-life when enabled
+            smoothing_enabled: false,  // Disabled by default for responsive FPS feel
         }
     }
 
@@ -88,12 +88,30 @@ impl CameraController {
         let pressed = state == ElementState::Pressed;
 
         match key {
-            KeyCode::KeyW => { self.forward = pressed; true }
-            KeyCode::KeyS => { self.backward = pressed; true }
-            KeyCode::KeyA => { self.left = pressed; true }
-            KeyCode::KeyD => { self.right = pressed; true }
-            KeyCode::KeyQ => { self.ana = pressed; true }
-            KeyCode::KeyE => { self.kata = pressed; true }
+            KeyCode::KeyW => {
+                self.forward = pressed;
+                true
+            }
+            KeyCode::KeyS => {
+                self.backward = pressed;
+                true
+            }
+            KeyCode::KeyA => {
+                self.left = pressed;
+                true
+            }
+            KeyCode::KeyD => {
+                self.right = pressed;
+                true
+            }
+            KeyCode::KeyQ => {
+                self.ana = pressed;
+                true
+            }
+            KeyCode::KeyE => {
+                self.kata = pressed;
+                true
+            }
             KeyCode::Space => {
                 self.up = pressed;
                 // Also track jump for physics mode
@@ -102,7 +120,10 @@ impl CameraController {
                 }
                 true
             }
-            KeyCode::ShiftLeft | KeyCode::ShiftRight => { self.down = pressed; true }
+            KeyCode::ShiftLeft | KeyCode::ShiftRight => {
+                self.down = pressed;
+                true
+            }
             _ => false,
         }
     }
@@ -132,7 +153,12 @@ impl CameraController {
     ///
     /// When `cursor_captured` is true, free look is enabled (no click required).
     /// Returns the camera position for debug display.
-    pub fn update<C: CameraControl>(&mut self, camera: &mut C, dt: f32, cursor_captured: bool) -> Vec4 {
+    pub fn update<C: CameraControl>(
+        &mut self,
+        camera: &mut C,
+        dt: f32,
+        cursor_captured: bool,
+    ) -> Vec4 {
         // Calculate movement deltas
         let fwd = (self.forward as i32 - self.backward as i32) as f32;
         let rgt = (self.right as i32 - self.left as i32) as f32;
@@ -149,8 +175,10 @@ impl CameraController {
             // Exponential smoothing: new = old * factor + input * (1 - factor)
             // factor = 2^(-dt / half_life), so smaller half_life = faster response
             let smooth_factor = 2.0f32.powf(-dt / self.smoothing_half_life);
-            self.smooth_yaw = self.smooth_yaw * smooth_factor + self.pending_yaw * (1.0 - smooth_factor);
-            self.smooth_pitch = self.smooth_pitch * smooth_factor + self.pending_pitch * (1.0 - smooth_factor);
+            self.smooth_yaw =
+                self.smooth_yaw * smooth_factor + self.pending_yaw * (1.0 - smooth_factor);
+            self.smooth_pitch =
+                self.smooth_pitch * smooth_factor + self.pending_pitch * (1.0 - smooth_factor);
             (self.smooth_yaw, self.smooth_pitch)
         } else {
             // No smoothing - use raw input
@@ -187,8 +215,14 @@ impl CameraController {
 
     /// Check if any movement keys are pressed
     pub fn is_moving(&self) -> bool {
-        self.forward || self.backward || self.left || self.right
-            || self.up || self.down || self.ana || self.kata
+        self.forward
+            || self.backward
+            || self.left
+            || self.right
+            || self.up
+            || self.down
+            || self.ana
+            || self.kata
     }
 
     /// Toggle input smoothing on/off

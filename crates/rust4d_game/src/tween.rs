@@ -114,7 +114,9 @@ impl EasingFunction {
                 Some(Self::EaseInOutQuad)
             }
             "ease_in_cubic" | "easeincubic" | "in_cubic" | "incubic" => Some(Self::EaseInCubic),
-            "ease_out_cubic" | "easeoutcubic" | "out_cubic" | "outcubic" => Some(Self::EaseOutCubic),
+            "ease_out_cubic" | "easeoutcubic" | "out_cubic" | "outcubic" => {
+                Some(Self::EaseOutCubic)
+            }
             "ease_in_out_cubic" | "easeinoutcubic" | "in_out_cubic" | "inoutcubic" => {
                 Some(Self::EaseInOutCubic)
             }
@@ -824,13 +826,7 @@ mod tests {
 
         for _ in 0..5 {
             let entity = world.spawn((rust4d_core::Transform4D::identity(),));
-            manager.tween_position(
-                entity,
-                Vec4::ZERO,
-                Vec4::X,
-                1.0,
-                EasingFunction::Linear,
-            );
+            manager.tween_position(entity, Vec4::ZERO, Vec4::X, 1.0, EasingFunction::Linear);
         }
 
         assert_eq!(manager.active_count(), 5);

@@ -85,10 +85,10 @@ pub fn split_prism(prism: [usize; 6], out: &mut Vec<Tetrahedron>) {
 /// refine the 16-cell boundary toward S³.
 pub const TET_SUBDIVISION: [[usize; 4]; 8] = [
     // Corner cells
-    [0, 4, 5, 6],  // v0, m01, m02, m03
-    [1, 4, 7, 8],  // v1, m01, m12, m13
-    [2, 5, 7, 9],  // v2, m02, m12, m23
-    [3, 6, 8, 9],  // v3, m03, m13, m23
+    [0, 4, 5, 6], // v0, m01, m02, m03
+    [1, 4, 7, 8], // v1, m01, m12, m13
+    [2, 5, 7, 9], // v2, m02, m12, m23
+    [3, 6, 8, 9], // v3, m03, m13, m23
     // Central octahedron around diagonal m01(4) – m23(9).
     // Equator cycle: m02(5) – m03(6) – m13(8) – m12(7).
     [4, 9, 5, 6],
@@ -176,7 +176,10 @@ mod tests {
         // (3,4,5) plane contains 2 triangles (the quad rule splits it the
         // same way from both sides) → internal pairings exist.
         let (paired, _unpaired) = m.face_pairing();
-        assert!(paired >= 2, "stacked prisms must share their interface faces");
+        assert!(
+            paired >= 2,
+            "stacked prisms must share their interface faces"
+        );
     }
 
     #[test]

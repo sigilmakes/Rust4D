@@ -1,7 +1,7 @@
 //! 4D Vector type
 
 use bytemuck::{Pod, Zeroable};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// 4D Vector with x, y, z, w components
 /// The w component represents the 4th spatial dimension (ana/kata)
@@ -15,11 +15,36 @@ pub struct Vec4 {
 }
 
 impl Vec4 {
-    pub const ZERO: Self = Self { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
-    pub const X: Self = Self { x: 1.0, y: 0.0, z: 0.0, w: 0.0 };
-    pub const Y: Self = Self { x: 0.0, y: 1.0, z: 0.0, w: 0.0 };
-    pub const Z: Self = Self { x: 0.0, y: 0.0, z: 1.0, w: 0.0 };
-    pub const W: Self = Self { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+    pub const ZERO: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        w: 0.0,
+    };
+    pub const X: Self = Self {
+        x: 1.0,
+        y: 0.0,
+        z: 0.0,
+        w: 0.0,
+    };
+    pub const Y: Self = Self {
+        x: 0.0,
+        y: 1.0,
+        z: 0.0,
+        w: 0.0,
+    };
+    pub const Z: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        z: 1.0,
+        w: 0.0,
+    };
+    pub const W: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        w: 1.0,
+    };
 
     /// Create a new Vec4
     #[inline]
@@ -275,12 +300,7 @@ impl std::ops::Mul<Vec4> for f32 {
     type Output = Vec4;
     #[inline]
     fn mul(self, vec: Vec4) -> Vec4 {
-        Vec4::new(
-            self * vec.x,
-            self * vec.y,
-            self * vec.z,
-            self * vec.w,
-        )
+        Vec4::new(self * vec.x, self * vec.y, self * vec.z, self * vec.w)
     }
 }
 
@@ -511,14 +531,22 @@ mod tests {
         let x = Vec4::X;
         let y = Vec4::Y;
         let angle = x.angle_to(y);
-        assert!((angle - FRAC_PI_2).abs() < 0.0001, "Orthogonal vectors should have π/2 angle, got {}", angle);
+        assert!(
+            (angle - FRAC_PI_2).abs() < 0.0001,
+            "Orthogonal vectors should have π/2 angle, got {}",
+            angle
+        );
     }
 
     #[test]
     fn test_angle_to_same_direction() {
         let v = Vec4::new(1.0, 2.0, 3.0, 4.0);
         let angle = v.angle_to(v);
-        assert!(angle.abs() < 0.0001, "Same direction should have 0 angle, got {}", angle);
+        assert!(
+            angle.abs() < 0.0001,
+            "Same direction should have 0 angle, got {}",
+            angle
+        );
     }
 
     #[test]
@@ -527,7 +555,11 @@ mod tests {
         let v = Vec4::X;
         let neg_v = -v;
         let angle = v.angle_to(neg_v);
-        assert!((angle - PI).abs() < 0.0001, "Opposite vectors should have π angle, got {}", angle);
+        assert!(
+            (angle - PI).abs() < 0.0001,
+            "Opposite vectors should have π angle, got {}",
+            angle
+        );
     }
 
     #[test]
@@ -537,7 +569,10 @@ mod tests {
         // Angle between X and Y is π/2. If we allow more than that, should reach target
         let result = from.rotate_towards(to, 2.0);
         let dot = result.dot(to);
-        assert!(dot > 0.99, "rotate_towards should reach target when max_radians is large enough");
+        assert!(
+            dot > 0.99,
+            "rotate_towards should reach target when max_radians is large enough"
+        );
     }
 
     #[test]
@@ -548,8 +583,12 @@ mod tests {
         // Rotate by π/4, should be halfway between X and Y
         let result = from.rotate_towards(to, FRAC_PI_4);
         let angle_from_start = from.angle_to(result);
-        assert!((angle_from_start - FRAC_PI_4).abs() < 0.01,
-            "Should rotate by max_radians, rotated {} instead of {}", angle_from_start, FRAC_PI_4);
+        assert!(
+            (angle_from_start - FRAC_PI_4).abs() < 0.01,
+            "Should rotate by max_radians, rotated {} instead of {}",
+            angle_from_start,
+            FRAC_PI_4
+        );
     }
 
     #[test]
@@ -558,7 +597,11 @@ mod tests {
         let to = Vec4::new(0.0, 1.0, 1.0, 1.0).normalized();
         let result = from.rotate_towards(to, 0.5);
         let len = result.length();
-        assert!((len - 1.0).abs() < 0.01, "rotate_towards should preserve length, got {}", len);
+        assert!(
+            (len - 1.0).abs() < 0.01,
+            "rotate_towards should preserve length, got {}",
+            len
+        );
     }
 
     #[test]
@@ -569,12 +612,18 @@ mod tests {
         let to = -Vec4::X;
         let result = from.rotate_towards(to, FRAC_PI_4);
         let len = result.length();
-        assert!((len - 1.0).abs() < 0.01,
-            "rotate_towards anti-parallel should produce unit vector, got length {}", len);
+        assert!(
+            (len - 1.0).abs() < 0.01,
+            "rotate_towards anti-parallel should produce unit vector, got length {}",
+            len
+        );
         // Should have rotated 45° from X toward -X
         let angle = from.angle_to(result);
-        assert!((angle - FRAC_PI_4).abs() < 0.01,
-            "Should rotate by max_radians, got {}", angle);
+        assert!(
+            (angle - FRAC_PI_4).abs() < 0.01,
+            "Should rotate by max_radians, got {}",
+            angle
+        );
     }
 
     #[test]
@@ -585,8 +634,12 @@ mod tests {
         for axis in &axes {
             let result = axis.rotate_towards(-*axis, FRAC_PI_4);
             let len = result.length();
-            assert!((len - 1.0).abs() < 0.01,
-                "Anti-parallel rotate_towards failed for {:?}, length = {}", axis, len);
+            assert!(
+                (len - 1.0).abs() < 0.01,
+                "Anti-parallel rotate_towards failed for {:?}, length = {}",
+                axis,
+                len
+            );
         }
     }
 }

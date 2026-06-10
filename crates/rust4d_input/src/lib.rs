@@ -5,4 +5,4 @@
 
 mod camera_controller;
 
-pub use camera_controller::{CameraController, CameraControl};
+pub use camera_controller::{CameraControl, CameraController};

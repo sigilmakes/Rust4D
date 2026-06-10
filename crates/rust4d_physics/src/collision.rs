@@ -434,7 +434,10 @@ mod tests {
 
     #[test]
     fn test_aabb_vs_plane_above() {
-        let aabb = AABB4D::from_center_half_extents(Vec4::new(0.0, 2.0, 0.0, 0.0), Vec4::new(0.5, 0.5, 0.5, 0.5));
+        let aabb = AABB4D::from_center_half_extents(
+            Vec4::new(0.0, 2.0, 0.0, 0.0),
+            Vec4::new(0.5, 0.5, 0.5, 0.5),
+        );
         let plane = Plane4D::floor(0.0);
 
         // AABB is above plane (lowest point at y=1.5)
@@ -443,7 +446,10 @@ mod tests {
 
     #[test]
     fn test_aabb_vs_plane_colliding() {
-        let aabb = AABB4D::from_center_half_extents(Vec4::new(0.0, 0.25, 0.0, 0.0), Vec4::new(0.5, 0.5, 0.5, 0.5));
+        let aabb = AABB4D::from_center_half_extents(
+            Vec4::new(0.0, 0.25, 0.0, 0.0),
+            Vec4::new(0.5, 0.5, 0.5, 0.5),
+        );
         let plane = Plane4D::floor(0.0);
 
         // AABB lowest point at y=-0.25, floor at y=0
@@ -475,7 +481,10 @@ mod tests {
     #[test]
     fn test_aabb_vs_aabb_no_collision() {
         let a = AABB4D::from_center_half_extents(Vec4::ZERO, Vec4::new(0.5, 0.5, 0.5, 0.5));
-        let b = AABB4D::from_center_half_extents(Vec4::new(5.0, 0.0, 0.0, 0.0), Vec4::new(0.5, 0.5, 0.5, 0.5));
+        let b = AABB4D::from_center_half_extents(
+            Vec4::new(5.0, 0.0, 0.0, 0.0),
+            Vec4::new(0.5, 0.5, 0.5, 0.5),
+        );
 
         assert!(aabb_vs_aabb(&a, &b).is_none());
     }
@@ -483,7 +492,10 @@ mod tests {
     #[test]
     fn test_aabb_vs_aabb_colliding() {
         let a = AABB4D::from_center_half_extents(Vec4::ZERO, Vec4::new(1.0, 1.0, 1.0, 1.0));
-        let b = AABB4D::from_center_half_extents(Vec4::new(1.5, 0.0, 0.0, 0.0), Vec4::new(1.0, 1.0, 1.0, 1.0));
+        let b = AABB4D::from_center_half_extents(
+            Vec4::new(1.5, 0.0, 0.0, 0.0),
+            Vec4::new(1.0, 1.0, 1.0, 1.0),
+        );
 
         // Overlap on x-axis: a.max.x=1.0, b.min.x=0.5, overlap=0.5
         let contact = aabb_vs_aabb(&a, &b).expect("Should collide");
@@ -625,21 +637,23 @@ mod tests {
         assert_eq!(floor.min.y, -7.0, "Floor bottom should be at y=-7");
 
         // Tesseract at starting position (y=0), half_extent=1
-        let tesseract_start = AABB4D::from_center_half_extents(
-            Vec4::ZERO,
-            Vec4::new(1.0, 1.0, 1.0, 1.0),
-        );
+        let tesseract_start =
+            AABB4D::from_center_half_extents(Vec4::ZERO, Vec4::new(1.0, 1.0, 1.0, 1.0));
         // Tesseract bottom at y=-1, floor top at y=-2 → no collision
-        assert!(aabb_vs_aabb(&tesseract_start, &floor).is_none(),
-            "Tesseract at y=0 should not collide with floor at y=-2");
+        assert!(
+            aabb_vs_aabb(&tesseract_start, &floor).is_none(),
+            "Tesseract at y=0 should not collide with floor at y=-2"
+        );
 
         // Tesseract fallen to y=-0.9 (bottom at y=-1.9, still above floor at y=-2)
         let tesseract_almost = AABB4D::from_center_half_extents(
             Vec4::new(0.0, -0.9, 0.0, 0.0),
             Vec4::new(1.0, 1.0, 1.0, 1.0),
         );
-        assert!(aabb_vs_aabb(&tesseract_almost, &floor).is_none(),
-            "Tesseract at y=-0.9 should not collide (bottom at -1.9, floor top at -2)");
+        assert!(
+            aabb_vs_aabb(&tesseract_almost, &floor).is_none(),
+            "Tesseract at y=-0.9 should not collide (bottom at -1.9, floor top at -2)"
+        );
 
         // Tesseract fallen to y=-1.1 (bottom at y=-2.1, penetrating floor)
         let tesseract_touching = AABB4D::from_center_half_extents(
@@ -647,9 +661,15 @@ mod tests {
             Vec4::new(1.0, 1.0, 1.0, 1.0),
         );
         let contact = aabb_vs_aabb(&tesseract_touching, &floor);
-        assert!(contact.is_some(), "Tesseract at y=-1.1 should collide with floor");
+        assert!(
+            contact.is_some(),
+            "Tesseract at y=-1.1 should collide with floor"
+        );
         let contact = contact.unwrap();
-        assert!(contact.penetration > 0.0, "Should have positive penetration");
+        assert!(
+            contact.penetration > 0.0,
+            "Should have positive penetration"
+        );
 
         // Tesseract at rest position y=-1 (bottom at y=-2, exactly on floor)
         // At exact boundary - behavior is undefined (floating point edge case)
@@ -662,8 +682,10 @@ mod tests {
             Vec4::new(0.0, -1.001, 0.0, 0.0),
             Vec4::new(1.0, 1.0, 1.0, 1.0),
         );
-        assert!(aabb_vs_aabb(&tesseract_slightly_in, &floor).is_some(),
-            "Tesseract slightly below resting position should collide");
+        assert!(
+            aabb_vs_aabb(&tesseract_slightly_in, &floor).is_some(),
+            "Tesseract slightly below resting position should collide"
+        );
     }
 
     #[test]
@@ -674,7 +696,9 @@ mod tests {
         let b = Sphere4D::new(Vec4::ZERO, 1.0);
         let contact = sphere_vs_sphere(&a, &b).expect("Coincident spheres should return a contact");
         assert_eq!(contact.normal, Vec4::Y, "Fallback normal should be Y-axis");
-        assert!((contact.penetration - 2.0).abs() < f32::EPSILON,
-            "Penetration should equal radius_a + radius_b");
+        assert!(
+            (contact.penetration - 2.0).abs() < f32::EPSILON,
+            "Penetration should equal radius_a + radius_b"
+        );
     }
 }

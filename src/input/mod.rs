@@ -4,4 +4,4 @@
 
 mod input_mapper;
 
-pub use input_mapper::{InputMapper, InputAction};
+pub use input_mapper::{InputAction, InputMapper};

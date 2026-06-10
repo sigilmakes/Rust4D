@@ -213,13 +213,19 @@ mod tests {
         // 3 edges: 1 or 3 vertices above (8 cases)
         // 4 edges: 2 vertices above (6 cases)
 
-        let count_0 = (0..16).filter(|&i| TETRA_EDGE_TABLE[i].count_ones() == 0).count();
-        let count_3 = (0..16).filter(|&i| TETRA_EDGE_TABLE[i].count_ones() == 3).count();
-        let count_4 = (0..16).filter(|&i| TETRA_EDGE_TABLE[i].count_ones() == 4).count();
+        let count_0 = (0..16)
+            .filter(|&i| TETRA_EDGE_TABLE[i].count_ones() == 0)
+            .count();
+        let count_3 = (0..16)
+            .filter(|&i| TETRA_EDGE_TABLE[i].count_ones() == 3)
+            .count();
+        let count_4 = (0..16)
+            .filter(|&i| TETRA_EDGE_TABLE[i].count_ones() == 4)
+            .count();
 
-        assert_eq!(count_0, 2);  // cases 0 and 15
-        assert_eq!(count_3, 8);  // C(4,1) + C(4,3) = 4 + 4
-        assert_eq!(count_4, 6);  // C(4,2) = 6
+        assert_eq!(count_0, 2); // cases 0 and 15
+        assert_eq!(count_3, 8); // C(4,1) + C(4,3) = 4 + 4
+        assert_eq!(count_4, 6); // C(4,2) = 6
     }
 
     #[test]
@@ -238,8 +244,11 @@ mod tests {
                 }
             }
 
-            assert_eq!(tri_count, expected_tris,
-                "Case {} should have {} triangles, got {}", case_idx, expected_tris, tri_count);
+            assert_eq!(
+                tri_count, expected_tris,
+                "Case {} should have {} triangles, got {}",
+                case_idx, expected_tris, tri_count
+            );
 
             match edge_count {
                 0 => assert_eq!(tri_count, 0),
@@ -257,7 +266,9 @@ mod tests {
             assert_eq!(
                 TETRA_EDGE_TABLE[i].count_ones(),
                 TETRA_EDGE_TABLE[15 - i].count_ones(),
-                "Cases {} and {} should have same edge count", i, 15 - i
+                "Cases {} and {} should have same edge count",
+                i,
+                15 - i
             );
         }
     }
@@ -272,9 +283,13 @@ mod tests {
             for i in 0..6 {
                 let idx = TETRA_TRI_TABLE[case_idx][i];
                 if idx >= 0 {
-                    assert!(idx < num_edges,
+                    assert!(
+                        idx < num_edges,
                         "Case {}: triangle index {} out of range (only {} edges)",
-                        case_idx, idx, num_edges);
+                        case_idx,
+                        idx,
+                        num_edges
+                    );
                 }
             }
         }

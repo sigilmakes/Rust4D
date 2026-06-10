@@ -34,17 +34,19 @@ use winit::{
 };
 
 use rust4d_core::{
-    Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World, Tags, Name,
-    Hyperplane4D,
+    DirtyFlags, Hyperplane4D, Material, Name, ShapeRef, Tags, Tesseract4D, Transform4D, World,
 };
+use rust4d_input::CameraController;
+use rust4d_math::Vec4;
 use rust4d_render::{
     camera4d::Camera4D,
     context::RenderContext,
-    pipeline::{perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline, MAX_OUTPUT_TRIANGLES},
-    RenderableGeometry, CheckerboardGeometry, position_gradient_color,
+    pipeline::{
+        perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline,
+        MAX_OUTPUT_TRIANGLES,
+    },
+    position_gradient_color, CheckerboardGeometry, RenderableGeometry,
 };
-use rust4d_math::Vec4;
-use rust4d_input::CameraController;
 
 /// Application state with full camera controller integration
 struct App {
@@ -81,15 +83,47 @@ impl App {
         // Each one at a different location in 4D space
         let tesseracts = [
             // XYZ positions (W=0) - visible immediately
-            (Vec4::new(0.0, 0.0, 0.0, 0.0), Material::from_rgb(0.9, 0.4, 0.2), "origin"),
-            (Vec4::new(5.0, 0.0, 0.0, 0.0), Material::from_rgb(0.2, 0.9, 0.3), "right"),
-            (Vec4::new(-5.0, 0.0, 0.0, 0.0), Material::from_rgb(0.2, 0.3, 0.9), "left"),
-            (Vec4::new(0.0, 3.0, 0.0, 0.0), Material::from_rgb(0.9, 0.9, 0.2), "above"),
-            (Vec4::new(0.0, 0.0, -5.0, 0.0), Material::from_rgb(0.2, 0.9, 0.9), "forward"),
+            (
+                Vec4::new(0.0, 0.0, 0.0, 0.0),
+                Material::from_rgb(0.9, 0.4, 0.2),
+                "origin",
+            ),
+            (
+                Vec4::new(5.0, 0.0, 0.0, 0.0),
+                Material::from_rgb(0.2, 0.9, 0.3),
+                "right",
+            ),
+            (
+                Vec4::new(-5.0, 0.0, 0.0, 0.0),
+                Material::from_rgb(0.2, 0.3, 0.9),
+                "left",
+            ),
+            (
+                Vec4::new(0.0, 3.0, 0.0, 0.0),
+                Material::from_rgb(0.9, 0.9, 0.2),
+                "above",
+            ),
+            (
+                Vec4::new(0.0, 0.0, -5.0, 0.0),
+                Material::from_rgb(0.2, 0.9, 0.9),
+                "forward",
+            ),
             // Tesseracts at different W positions (use Q/E to find them!)
-            (Vec4::new(3.0, 0.0, 3.0, 2.0), Material::from_rgb(0.9, 0.2, 0.9), "w+2"),
-            (Vec4::new(-3.0, 0.0, 3.0, -2.0), Material::from_rgb(0.6, 0.3, 0.9), "w-2"),
-            (Vec4::new(0.0, 1.0, -3.0, 4.0), Material::from_rgb(0.3, 0.6, 0.9), "w+4"),
+            (
+                Vec4::new(3.0, 0.0, 3.0, 2.0),
+                Material::from_rgb(0.9, 0.2, 0.9),
+                "w+2",
+            ),
+            (
+                Vec4::new(-3.0, 0.0, 3.0, -2.0),
+                Material::from_rgb(0.6, 0.3, 0.9),
+                "w-2",
+            ),
+            (
+                Vec4::new(0.0, 1.0, -3.0, 4.0),
+                Material::from_rgb(0.3, 0.6, 0.9),
+                "w+4",
+            ),
         ];
 
         for (position, material, name) in tesseracts {
@@ -136,22 +170,29 @@ impl App {
     fn build_geometry(world: &World) -> RenderableGeometry {
         let mut geometry = RenderableGeometry::new();
 
-        let checkerboard = CheckerboardGeometry::new(
-            [0.25, 0.25, 0.30, 1.0],
-            [0.55, 0.55, 0.60, 1.0],
-            2.0,
-        );
+        let checkerboard =
+            CheckerboardGeometry::new([0.25, 0.25, 0.30, 1.0], [0.55, 0.55, 0.60, 1.0], 2.0);
 
-        for (_entity, (transform, shape, material, tags)) in
-            world.ecs().query::<(&Transform4D, &ShapeRef, &Material, Option<&Tags>)>().iter()
+        for (_entity, (transform, shape, material, tags)) in world
+            .ecs()
+            .query::<(&Transform4D, &ShapeRef, &Material, Option<&Tags>)>()
+            .iter()
         {
             let is_dynamic = tags.map(|t| t.has("dynamic")).unwrap_or(false);
             if is_dynamic {
-                geometry.add_components_with_color(transform, shape.as_shape(), material, &position_gradient_color);
+                geometry.add_components_with_color(
+                    transform,
+                    shape.as_shape(),
+                    material,
+                    &position_gradient_color,
+                );
             } else {
-                geometry.add_components_with_color(transform, shape.as_shape(), material, &|v, _m| {
-                    checkerboard.color_for_position(v.x, v.z)
-                });
+                geometry.add_components_with_color(
+                    transform,
+                    shape.as_shape(),
+                    material,
+                    &|v, _m| checkerboard.color_for_position(v.x, v.z),
+                );
             }
         }
 
@@ -161,7 +202,8 @@ impl App {
     /// Capture cursor for FPS-style controls
     fn capture_cursor(&mut self) {
         if let Some(window) = &self.window {
-            let grab_result = window.set_cursor_grab(CursorGrabMode::Locked)
+            let grab_result = window
+                .set_cursor_grab(CursorGrabMode::Locked)
                 .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined));
 
             if grab_result.is_ok() {
@@ -195,7 +237,8 @@ impl ApplicationHandler for App {
             );
 
             let render_context = pollster::block_on(RenderContext::new(window.clone()));
-            let mut slice_pipeline = SlicePipeline::new(&render_context.device, MAX_OUTPUT_TRIANGLES);
+            let mut slice_pipeline =
+                SlicePipeline::new(&render_context.device, MAX_OUTPUT_TRIANGLES);
             let mut render_pipeline =
                 RenderPipeline::new(&render_context.device, render_context.config.format);
 
@@ -275,7 +318,10 @@ impl ApplicationHandler for App {
 
             WindowEvent::MouseInput { state, button, .. } => {
                 // Click to capture cursor
-                if state == ElementState::Pressed && button == MouseButton::Left && !self.cursor_captured {
+                if state == ElementState::Pressed
+                    && button == MouseButton::Left
+                    && !self.cursor_captured
+                {
                     self.capture_cursor();
                 }
                 self.controller.process_mouse_button(button, state);
@@ -297,7 +343,8 @@ impl ApplicationHandler for App {
                 self.last_frame = now;
 
                 // Update camera via controller
-                self.controller.update(&mut self.camera, dt, self.cursor_captured);
+                self.controller
+                    .update(&mut self.camera, dt, self.cursor_captured);
 
                 // Update window title with position info
                 if let Some(window) = &self.window {

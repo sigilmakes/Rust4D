@@ -7,8 +7,8 @@
 //! All shapes are created in **local space** (centered at origin or with bottom at y=0).
 //! The entity transform is used to position them in world space.
 
-use serde::{Serialize, Deserialize};
-use rust4d_math::{Tesseract4D, Hyperplane4D, ConvexShape4D, primitives};
+use rust4d_math::{primitives, ConvexShape4D, Hyperplane4D, Tesseract4D};
+use serde::{Deserialize, Serialize};
 
 /// Serializable shape template
 ///
@@ -121,17 +121,27 @@ impl ShapeTemplate {
     /// Shapes are created in local space. The entity transform positions them in world space.
     pub fn create_shape(&self) -> Box<dyn ConvexShape4D> {
         match self {
-            ShapeTemplate::Tesseract { size } => {
-                Box::new(Tesseract4D::new(*size))
-            }
-            ShapeTemplate::Hyperplane { size, subdivisions, cell_size, thickness, .. } => {
+            ShapeTemplate::Tesseract { size } => Box::new(Tesseract4D::new(*size)),
+            ShapeTemplate::Hyperplane {
+                size,
+                subdivisions,
+                cell_size,
+                thickness,
+                ..
+            } => {
                 // Note: `y` is not passed to the shape constructor - it's used for physics only.
                 // The visual mesh is created at y=0 (local space) and positioned by entity transform.
-                Box::new(Hyperplane4D::new(*size, *subdivisions as usize, *cell_size, *thickness))
+                Box::new(Hyperplane4D::new(
+                    *size,
+                    *subdivisions as usize,
+                    *cell_size,
+                    *thickness,
+                ))
             }
-            ShapeTemplate::Hypersphere { radius, subdivisions } => {
-                Box::new(primitives::hypersphere(*radius, *subdivisions))
-            }
+            ShapeTemplate::Hypersphere {
+                radius,
+                subdivisions,
+            } => Box::new(primitives::hypersphere(*radius, *subdivisions)),
             ShapeTemplate::Pentachoron { circumradius } => {
                 Box::new(primitives::pentachoron(*circumradius))
             }
@@ -144,15 +154,23 @@ impl ShapeTemplate {
             ShapeTemplate::Hexacosichoron { circumradius } => {
                 Box::new(primitives::hexacosichoron(*circumradius))
             }
-            ShapeTemplate::Spherinder { radius, half_height, subdivisions } => {
-                Box::new(primitives::spherinder(*radius, *half_height, *subdivisions))
-            }
-            ShapeTemplate::Cubinder { radius, half_size, segments } => {
-                Box::new(primitives::cubinder(*radius, *half_size, *segments))
-            }
-            ShapeTemplate::Duocylinder { radius_xy, radius_zw, segments } => {
-                Box::new(primitives::duocylinder(*radius_xy, *radius_zw, *segments, *segments))
-            }
+            ShapeTemplate::Spherinder {
+                radius,
+                half_height,
+                subdivisions,
+            } => Box::new(primitives::spherinder(*radius, *half_height, *subdivisions)),
+            ShapeTemplate::Cubinder {
+                radius,
+                half_size,
+                segments,
+            } => Box::new(primitives::cubinder(*radius, *half_size, *segments)),
+            ShapeTemplate::Duocylinder {
+                radius_xy,
+                radius_zw,
+                segments,
+            } => Box::new(primitives::duocylinder(
+                *radius_xy, *radius_zw, *segments, *segments,
+            )),
         }
     }
 
@@ -163,23 +181,30 @@ impl ShapeTemplate {
     pub fn bounding_radius(&self) -> f32 {
         match self {
             ShapeTemplate::Tesseract { size } => size * 0.5 * 2.0, // half-diagonal = (s/2)·√4
-            ShapeTemplate::Hyperplane { size, cell_size, thickness, .. } => {
-                (2.0 * size * size + cell_size * cell_size + thickness * thickness).sqrt()
-            }
+            ShapeTemplate::Hyperplane {
+                size,
+                cell_size,
+                thickness,
+                ..
+            } => (2.0 * size * size + cell_size * cell_size + thickness * thickness).sqrt(),
             ShapeTemplate::Hypersphere { radius, .. } => *radius,
             ShapeTemplate::Pentachoron { circumradius }
             | ShapeTemplate::Hexadecachoron { circumradius }
             | ShapeTemplate::Icositetrachoron { circumradius }
             | ShapeTemplate::Hexacosichoron { circumradius } => *circumradius,
-            ShapeTemplate::Spherinder { radius, half_height, .. } => {
-                (radius * radius + half_height * half_height).sqrt()
-            }
-            ShapeTemplate::Cubinder { radius, half_size, .. } => {
-                (radius * radius + 2.0 * half_size * half_size).sqrt()
-            }
-            ShapeTemplate::Duocylinder { radius_xy, radius_zw, .. } => {
-                (radius_xy * radius_xy + radius_zw * radius_zw).sqrt()
-            }
+            ShapeTemplate::Spherinder {
+                radius,
+                half_height,
+                ..
+            } => (radius * radius + half_height * half_height).sqrt(),
+            ShapeTemplate::Cubinder {
+                radius, half_size, ..
+            } => (radius * radius + 2.0 * half_size * half_size).sqrt(),
+            ShapeTemplate::Duocylinder {
+                radius_xy,
+                radius_zw,
+                ..
+            } => (radius_xy * radius_xy + radius_zw * radius_zw).sqrt(),
         }
     }
 
@@ -191,11 +216,15 @@ impl ShapeTemplate {
     pub fn collider_hint(&self) -> ColliderHint {
         match self {
             ShapeTemplate::Hypersphere { radius, .. } => ColliderHint::Sphere { radius: *radius },
-            ShapeTemplate::Hexacosichoron { circumradius } => {
-                ColliderHint::Sphere { radius: *circumradius }
-            }
-            ShapeTemplate::Tesseract { size } => ColliderHint::Aabb { half_extent: size * 0.5 },
-            other => ColliderHint::Aabb { half_extent: other.bounding_radius() * std::f32::consts::FRAC_1_SQRT_2 },
+            ShapeTemplate::Hexacosichoron { circumradius } => ColliderHint::Sphere {
+                radius: *circumradius,
+            },
+            ShapeTemplate::Tesseract { size } => ColliderHint::Aabb {
+                half_extent: size * 0.5,
+            },
+            other => ColliderHint::Aabb {
+                half_extent: other.bounding_radius() * std::f32::consts::FRAC_1_SQRT_2,
+            },
         }
     }
 
@@ -209,28 +238,55 @@ impl ShapeTemplate {
     /// The `y` parameter specifies the Y-level for the physics collider.
     /// The visual mesh is created in local space (y=0) and should be positioned
     /// using the entity transform.
-    pub fn hyperplane(y: f32, size: f32, subdivisions: u32, cell_size: f32, thickness: f32) -> Self {
-        ShapeTemplate::Hyperplane { y, size, subdivisions, cell_size, thickness }
+    pub fn hyperplane(
+        y: f32,
+        size: f32,
+        subdivisions: u32,
+        cell_size: f32,
+        thickness: f32,
+    ) -> Self {
+        ShapeTemplate::Hyperplane {
+            y,
+            size,
+            subdivisions,
+            cell_size,
+            thickness,
+        }
     }
 
     /// Create a hypersphere template at default quality
     pub fn hypersphere(radius: f32) -> Self {
-        ShapeTemplate::Hypersphere { radius, subdivisions: 2 }
+        ShapeTemplate::Hypersphere {
+            radius,
+            subdivisions: 2,
+        }
     }
 
     /// Create a spherinder template at default quality
     pub fn spherinder(radius: f32, half_height: f32) -> Self {
-        ShapeTemplate::Spherinder { radius, half_height, subdivisions: 2 }
+        ShapeTemplate::Spherinder {
+            radius,
+            half_height,
+            subdivisions: 2,
+        }
     }
 
     /// Create a cubinder template at default quality
     pub fn cubinder(radius: f32, half_size: f32) -> Self {
-        ShapeTemplate::Cubinder { radius, half_size, segments: 24 }
+        ShapeTemplate::Cubinder {
+            radius,
+            half_size,
+            segments: 24,
+        }
     }
 
     /// Create a duocylinder template at default quality
     pub fn duocylinder(radius_xy: f32, radius_zw: f32) -> Self {
-        ShapeTemplate::Duocylinder { radius_xy, radius_zw, segments: 24 }
+        ShapeTemplate::Duocylinder {
+            radius_xy,
+            radius_zw,
+            segments: 24,
+        }
     }
 }
 
@@ -310,7 +366,10 @@ mod tests {
         // Scene files may omit resolution fields; they get sane defaults.
         let s: ShapeTemplate = ron::from_str("(type: \"Hypersphere\", radius: 2.0)").unwrap();
         match s {
-            ShapeTemplate::Hypersphere { radius, subdivisions } => {
+            ShapeTemplate::Hypersphere {
+                radius,
+                subdivisions,
+            } => {
                 assert_eq!(radius, 2.0);
                 assert_eq!(subdivisions, 2);
             }
@@ -353,7 +412,13 @@ mod tests {
         let deserialized: ShapeTemplate = ron::from_str(&serialized).unwrap();
 
         match deserialized {
-            ShapeTemplate::Hyperplane { y, size, subdivisions, cell_size, thickness } => {
+            ShapeTemplate::Hyperplane {
+                y,
+                size,
+                subdivisions,
+                cell_size,
+                thickness,
+            } => {
                 assert_eq!(y, -2.0);
                 assert_eq!(size, 4.0);
                 assert_eq!(subdivisions, 4);

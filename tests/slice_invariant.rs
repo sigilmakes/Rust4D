@@ -89,7 +89,10 @@ impl TestRig {
                     },
                 )
             });
-        assert!(character.is_some(), "default scene should produce a player body");
+        assert!(
+            character.is_some(),
+            "default scene should produce a player body"
+        );
 
         Self {
             scene_manager,
@@ -131,7 +134,8 @@ impl TestRig {
     }
 
     fn release(&mut self, key: KeyCode) {
-        self.controller.process_keyboard(key, ElementState::Released);
+        self.controller
+            .process_keyboard(key, ElementState::Released);
     }
 
     fn debug_state(&self, label: &str) {

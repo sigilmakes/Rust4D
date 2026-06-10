@@ -35,7 +35,9 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use rust4d_core::{Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World};
+use rust4d_core::{DirtyFlags, Material, ShapeRef, Tesseract4D, Transform4D, World};
+use rust4d_input::CameraController;
+use rust4d_math::Vec4;
 use rust4d_render::{
     camera4d::Camera4D,
     context::RenderContext,
@@ -43,10 +45,8 @@ use rust4d_render::{
         perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline,
         MAX_OUTPUT_TRIANGLES,
     },
-    RenderableGeometry, position_gradient_color,
+    position_gradient_color, RenderableGeometry,
 };
-use rust4d_math::Vec4;
-use rust4d_input::CameraController;
 
 // ============================================================================
 // RON Asset Types
@@ -229,7 +229,9 @@ impl PreviewApp {
                 PreviewMesh::Hypersphere { segments: _ } => {
                     // TODO: Implement proper hypersphere when available in rust4d_math
                     // For now, use a tesseract as placeholder
-                    println!("Note: Hypersphere not yet implemented, using tesseract as placeholder");
+                    println!(
+                        "Note: Hypersphere not yet implemented, using tesseract as placeholder"
+                    );
                     Box::new(Tesseract4D::new(1.0))
                 }
             };
@@ -304,7 +306,11 @@ impl PreviewApp {
     /// Upload geometry to GPU
     fn upload_geometry(&mut self) {
         if let (Some(ctx), Some(sp)) = (&self.render_context, &mut self.slice_pipeline) {
-            sp.upload_tetrahedra(&ctx.device, &self.geometry.vertices, &self.geometry.tetrahedra);
+            sp.upload_tetrahedra(
+                &ctx.device,
+                &self.geometry.vertices,
+                &self.geometry.tetrahedra,
+            );
         }
     }
 

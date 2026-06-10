@@ -91,7 +91,9 @@ impl EguiRenderer {
         }
 
         // Tessellate shapes into primitives
-        let clipped_primitives = self.ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+        let clipped_primitives = self
+            .ctx
+            .tessellate(full_output.shapes, full_output.pixels_per_point);
 
         // Update buffers
         self.renderer.update_buffers(

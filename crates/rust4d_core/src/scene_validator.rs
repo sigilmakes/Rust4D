@@ -127,7 +127,7 @@ mod tests {
     use super::*;
     use crate::entity::EntityTemplate;
     use crate::shapes::ShapeTemplate;
-    use crate::{Transform4D, Material};
+    use crate::{Material, Transform4D};
 
     fn make_valid_scene() -> Scene {
         let mut scene = Scene::new("Valid Scene")
@@ -220,7 +220,9 @@ mod tests {
 
         let errors = SceneValidator::validate(&scene);
         assert!(
-            !errors.iter().any(|e| matches!(e, ValidationError::UnreasonableGravity(_))),
+            !errors
+                .iter()
+                .any(|e| matches!(e, ValidationError::UnreasonableGravity(_))),
             "Did not expect gravity error, got: {:?}",
             errors
         );
@@ -228,8 +230,7 @@ mod tests {
 
     #[test]
     fn test_extreme_spawn_position_detected() {
-        let mut scene = Scene::new("Far Away")
-            .with_player_spawn(99999.0, 0.0, 0.0, 0.0);
+        let mut scene = Scene::new("Far Away").with_player_spawn(99999.0, 0.0, 0.0, 0.0);
         scene.add_entity(EntityTemplate::new(
             ShapeTemplate::tesseract(1.0),
             Transform4D::identity(),
@@ -238,7 +239,9 @@ mod tests {
 
         let errors = SceneValidator::validate(&scene);
         assert!(
-            errors.contains(&ValidationError::ExtremeSpawnPosition([99999.0, 0.0, 0.0, 0.0])),
+            errors.contains(&ValidationError::ExtremeSpawnPosition([
+                99999.0, 0.0, 0.0, 0.0
+            ])),
             "Expected ExtremeSpawnPosition, got: {:?}",
             errors
         );
@@ -249,7 +252,9 @@ mod tests {
         let scene = make_valid_scene();
         let errors = SceneValidator::validate(&scene);
         assert!(
-            !errors.iter().any(|e| matches!(e, ValidationError::ExtremeSpawnPosition(_))),
+            !errors
+                .iter()
+                .any(|e| matches!(e, ValidationError::ExtremeSpawnPosition(_))),
             "Did not expect spawn error, got: {:?}",
             errors
         );
@@ -272,10 +277,17 @@ mod tests {
             .with_player_spawn(50000.0, 0.0, 0.0, 0.0);
 
         let errors = SceneValidator::validate(&scene);
-        assert!(errors.len() >= 3, "Expected at least 3 errors, got {}: {:?}", errors.len(), errors);
+        assert!(
+            errors.len() >= 3,
+            "Expected at least 3 errors, got {}: {:?}",
+            errors.len(),
+            errors
+        );
         assert!(errors.contains(&ValidationError::EmptyScene));
         assert!(errors.contains(&ValidationError::UnreasonableGravity(-9999.0)));
-        assert!(errors.contains(&ValidationError::ExtremeSpawnPosition([50000.0, 0.0, 0.0, 0.0])));
+        assert!(errors.contains(&ValidationError::ExtremeSpawnPosition([
+            50000.0, 0.0, 0.0, 0.0
+        ])));
     }
 
     #[test]
@@ -295,7 +307,9 @@ mod tests {
 
         let errors = SceneValidator::validate(&scene);
         assert!(
-            !errors.iter().any(|e| matches!(e, ValidationError::DuplicateName(_))),
+            !errors
+                .iter()
+                .any(|e| matches!(e, ValidationError::DuplicateName(_))),
             "Unnamed entities should not trigger duplicate name: {:?}",
             errors
         );
@@ -316,9 +330,10 @@ mod tests {
             "Entity 'bar' has no shape"
         );
         assert!(format!("{}", ValidationError::UnreasonableGravity(-5000.0)).contains("-5000"));
-        assert!(
-            format!("{}", ValidationError::ExtremeSpawnPosition([1.0, 2.0, 3.0, 4.0]))
-                .contains("1, 2, 3, 4")
-        );
+        assert!(format!(
+            "{}",
+            ValidationError::ExtremeSpawnPosition([1.0, 2.0, 3.0, 4.0])
+        )
+        .contains("1, 2, 3, 4"));
     }
 }

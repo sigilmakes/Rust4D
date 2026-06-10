@@ -165,16 +165,15 @@ pub fn icositetrachoron(circumradius: f32) -> Mesh4D {
         );
 
         // Cell centroid; opposite vertex pairs satisfy a + b = 2c.
-        let centroid = cell
-            .iter()
-            .fold(Vec4::ZERO, |acc, &i| acc + vertices[i])
-            * (1.0 / 6.0);
+        let centroid = cell.iter().fold(Vec4::ZERO, |acc, &i| acc + vertices[i]) * (1.0 / 6.0);
 
         let antipode = |a: usize| -> usize {
             *cell
                 .iter()
                 .find(|&&b| {
-                    b != a && (vertices[a] + vertices[b] - centroid * 2.0).length() < 1e-4 * circumradius.max(1.0)
+                    b != a
+                        && (vertices[a] + vertices[b] - centroid * 2.0).length()
+                            < 1e-4 * circumradius.max(1.0)
                 })
                 .expect("octahedral cell vertex must have an antipode")
         };
@@ -182,7 +181,11 @@ pub fn icositetrachoron(circumradius: f32) -> Mesh4D {
         // Axis pair (a, a'), equator cycle e0 → e1 → e0' → e1'.
         let a = cell[0];
         let a2 = antipode(a);
-        let equator: Vec<usize> = cell.iter().copied().filter(|&v| v != a && v != a2).collect();
+        let equator: Vec<usize> = cell
+            .iter()
+            .copied()
+            .filter(|&v| v != a && v != a2)
+            .collect();
         let e0 = equator[0];
         let e0p = antipode(e0);
         let e1 = *equator.iter().find(|&&v| v != e0 && v != e0p).unwrap();
@@ -237,7 +240,11 @@ pub fn hexacosichoron(circumradius: f32) -> Mesh4D {
             for (dst, &src) in perm.iter().enumerate() {
                 let mag = base[src];
                 if mag != 0.0 {
-                    let s = if (bits >> sign_slot) & 1 == 0 { 1.0 } else { -1.0 };
+                    let s = if (bits >> sign_slot) & 1 == 0 {
+                        1.0
+                    } else {
+                        -1.0
+                    };
                     v[dst] = s * mag;
                     sign_slot += 1;
                 } else {
@@ -253,9 +260,8 @@ pub fn hexacosichoron(circumradius: f32) -> Mesh4D {
     let edge = 1.0 / PHI;
     let edge2_lo = (edge * edge) * 0.999;
     let edge2_hi = (edge * edge) * 1.001;
-    let dist2 = |a: &[f64; 4], b: &[f64; 4]| -> f64 {
-        (0..4).map(|k| (a[k] - b[k]) * (a[k] - b[k])).sum()
-    };
+    let dist2 =
+        |a: &[f64; 4], b: &[f64; 4]| -> f64 { (0..4).map(|k| (a[k] - b[k]) * (a[k] - b[k])).sum() };
 
     let n = raw.len();
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::with_capacity(12); n];
@@ -418,8 +424,16 @@ mod tests {
     fn test_hexacosichoron_structure() {
         let m = hexacosichoron(1.0);
         m.validate().unwrap();
-        assert_eq!(m.vertex_count(), 120, "binary icosahedral group has order 120");
-        assert_eq!(m.tetrahedron_count(), 600, "the 600-cell must have 600 cells");
+        assert_eq!(
+            m.vertex_count(),
+            120,
+            "binary icosahedral group has order 120"
+        );
+        assert_eq!(
+            m.tetrahedron_count(),
+            600,
+            "the 600-cell must have 600 cells"
+        );
         assert!(m.is_watertight(), "600-cell boundary must be watertight");
         for v in m.vertices() {
             assert!((v.length() - 1.0).abs() < 1e-5);
@@ -449,17 +463,28 @@ mod tests {
                 incident[i] += 1;
             }
         }
-        assert!(incident.iter().all(|&c| c == 20), "each vertex must touch 20 cells");
+        assert!(
+            incident.iter().all(|&c| c == 20),
+            "each vertex must touch 20 cells"
+        );
     }
 
     #[test]
     fn test_polytopes_scale_with_circumradius() {
-        for ctor in [pentachoron, hexadecachoron, icositetrachoron, hexacosichoron] {
+        for ctor in [
+            pentachoron,
+            hexadecachoron,
+            icositetrachoron,
+            hexacosichoron,
+        ] {
             let small = ctor(1.0);
             let big = ctor(2.0);
             // Boundary 3-volume scales with r³
             let ratio = big.surface_volume() / small.surface_volume();
-            assert!((ratio - 8.0).abs() < 1e-2, "volume must scale as r³, got {ratio}");
+            assert!(
+                (ratio - 8.0).abs() < 1e-2,
+                "volume must scale as r³, got {ratio}"
+            );
         }
     }
 }

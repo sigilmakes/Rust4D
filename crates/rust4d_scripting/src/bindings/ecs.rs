@@ -163,18 +163,15 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "query",
         lua.create_function(|lua, component: String| {
             if !ECS_WARNED.swap(true, Ordering::Relaxed) {
-                log::warn!(
-                    "[ecs] hecs::World not connected - entity operations are stubs."
-                );
+                log::warn!("[ecs] hecs::World not connected - entity operations are stubs.");
             }
 
             log::trace!("[ecs] query called for component: {}", component);
 
             // Return an empty iterator function
             // Real implementation would iterate over hecs::World query results
-            let empty_iter = lua.create_function(|_, ()| -> LuaResult<Option<LuaEntity>> {
-                Ok(None)
-            })?;
+            let empty_iter =
+                lua.create_function(|_, ()| -> LuaResult<Option<LuaEntity>> { Ok(None) })?;
             Ok(empty_iter)
         })?,
     )?;
@@ -186,9 +183,7 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "find_by_name",
         lua.create_function(|_, name: String| {
             if !ECS_WARNED.swap(true, Ordering::Relaxed) {
-                log::warn!(
-                    "[ecs] hecs::World not connected - entity operations are stubs."
-                );
+                log::warn!("[ecs] hecs::World not connected - entity operations are stubs.");
             }
             log::trace!("[ecs] find_by_name called: {}", name);
             // Real implementation would query World for entity with matching Name component
@@ -240,7 +235,10 @@ mod tests {
     #[test]
     fn test_world_table_exists() {
         let lua = create_lua_with_ecs();
-        let world: LuaTable = lua.globals().get("world").expect("world table should exist");
+        let world: LuaTable = lua
+            .globals()
+            .get("world")
+            .expect("world table should exist");
         assert!(world.contains_key("spawn").unwrap());
         assert!(world.contains_key("query").unwrap());
         assert!(world.contains_key("find_by_name").unwrap());
@@ -423,7 +421,8 @@ mod tests {
         let generation: u64 = 1;
         let id: u64 = 42;
         let bits = (generation << 32) | id;
-        let entity = LuaEntity(Entity::from_bits(bits).expect("should create entity from valid bits"));
+        let entity =
+            LuaEntity(Entity::from_bits(bits).expect("should create entity from valid bits"));
         // Entity created with id 42 should have id 42
         assert_eq!(entity.0.id(), 42);
         // to_bits returns a non-zero value

@@ -8,9 +8,9 @@
 //! - 6 bivectors (one for each plane)
 //! - 1 pseudoscalar (4-vector)
 
-use bytemuck::{Pod, Zeroable};
-use serde::{Serialize, Deserialize};
 use crate::Vec4;
+use bytemuck::{Pod, Zeroable};
+use serde::{Deserialize, Serialize};
 
 /// The 6 rotation planes in 4D space
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,8 +141,8 @@ impl Rotor4 {
         let b_zw = a.z * b.w - a.w * b.z;
 
         // Magnitude of the bivector
-        let mag_sq = b_xy * b_xy + b_xz * b_xz + b_xw * b_xw
-                   + b_yz * b_yz + b_yw * b_yw + b_zw * b_zw;
+        let mag_sq =
+            b_xy * b_xy + b_xz * b_xz + b_xw * b_xw + b_yz * b_yz + b_yw * b_yw + b_zw * b_zw;
 
         if mag_sq < 1e-10 {
             // Vectors are parallel, no rotation plane
@@ -276,25 +276,25 @@ impl Rotor4 {
         let new_x = rv_e1 * s
             + rv_e2 * b12 + rv_e3 * b13 + rv_e4 * b14  // from e_i * e_1i
             + rv_e123 * b23 + rv_e124 * b24 + rv_e134 * b34  // from e_1jk * e_jk
-            - rv_e234 * p;  // from e_234 * e_1234 = -e_1
+            - rv_e234 * p; // from e_234 * e_1234 = -e_1
 
         // e2 coefficient:
         let new_y = rv_e2 * s
             - rv_e1 * b12 + rv_e3 * b23 + rv_e4 * b24  // from e_i * e_2i
             - rv_e123 * b13 - rv_e124 * b14 + rv_e234 * b34  // from e_2jk * e_jk
-            + rv_e134 * p;  // from e_134 * e_1234 = e_2
+            + rv_e134 * p; // from e_134 * e_1234 = e_2
 
         // e3 coefficient:
         let new_z = rv_e3 * s
             - rv_e1 * b13 - rv_e2 * b23 + rv_e4 * b34  // from e_i * e_3i
             + rv_e123 * b12 - rv_e134 * b14 - rv_e234 * b24  // from e_3jk * e_jk
-            - rv_e124 * p;  // from e_124 * e_1234 = -e_3
+            - rv_e124 * p; // from e_124 * e_1234 = -e_3
 
         // e4 coefficient:
         let new_w = rv_e4 * s
             - rv_e1 * b14 - rv_e2 * b24 - rv_e3 * b34  // from e_i * e_4i
             + rv_e124 * b12 + rv_e134 * b13 + rv_e234 * b23  // from e_4jk * e_jk
-            + rv_e123 * p;  // from e_123 * e_1234 = e_4
+            + rv_e123 * p; // from e_123 * e_1234 = e_4
 
         Vec4::new(new_x, new_y, new_z, new_w)
     }
@@ -319,46 +319,53 @@ impl Rotor4 {
             + a.p * b.p;
 
         // XY bivector
-        let b_xy = a.s * b.b_xy + a.b_xy * b.s
-            - a.b_xz * b.b_yz + a.b_yz * b.b_xz
-            - a.b_xw * b.b_yw + a.b_yw * b.b_xw
-            - a.b_zw * b.p - a.p * b.b_zw;
+        let b_xy = a.s * b.b_xy + a.b_xy * b.s - a.b_xz * b.b_yz + a.b_yz * b.b_xz
+            - a.b_xw * b.b_yw
+            + a.b_yw * b.b_xw
+            - a.b_zw * b.p
+            - a.p * b.b_zw;
 
         // XZ bivector
-        let b_xz = a.s * b.b_xz + a.b_xz * b.s
-            + a.b_xy * b.b_yz - a.b_yz * b.b_xy
-            - a.b_xw * b.b_zw + a.b_zw * b.b_xw
-            + a.b_yw * b.p + a.p * b.b_yw;
+        let b_xz =
+            a.s * b.b_xz + a.b_xz * b.s + a.b_xy * b.b_yz - a.b_yz * b.b_xy - a.b_xw * b.b_zw
+                + a.b_zw * b.b_xw
+                + a.b_yw * b.p
+                + a.p * b.b_yw;
 
         // XW bivector
-        let b_xw = a.s * b.b_xw + a.b_xw * b.s
-            + a.b_xy * b.b_yw - a.b_yw * b.b_xy
-            + a.b_xz * b.b_zw - a.b_zw * b.b_xz
-            - a.b_yz * b.p - a.p * b.b_yz;
+        let b_xw = a.s * b.b_xw + a.b_xw * b.s + a.b_xy * b.b_yw - a.b_yw * b.b_xy
+            + a.b_xz * b.b_zw
+            - a.b_zw * b.b_xz
+            - a.b_yz * b.p
+            - a.p * b.b_yz;
 
         // YZ bivector
-        let b_yz = a.s * b.b_yz + a.b_yz * b.s
-            - a.b_xy * b.b_xz + a.b_xz * b.b_xy
-            - a.b_yw * b.b_zw + a.b_zw * b.b_yw
-            - a.b_xw * b.p - a.p * b.b_xw;
+        let b_yz = a.s * b.b_yz + a.b_yz * b.s - a.b_xy * b.b_xz + a.b_xz * b.b_xy
+            - a.b_yw * b.b_zw
+            + a.b_zw * b.b_yw
+            - a.b_xw * b.p
+            - a.p * b.b_xw;
 
         // YW bivector
-        let b_yw = a.s * b.b_yw + a.b_yw * b.s
-            - a.b_xy * b.b_xw + a.b_xw * b.b_xy
-            + a.b_yz * b.b_zw - a.b_zw * b.b_yz
-            + a.b_xz * b.p + a.p * b.b_xz;
+        let b_yw =
+            a.s * b.b_yw + a.b_yw * b.s - a.b_xy * b.b_xw + a.b_xw * b.b_xy + a.b_yz * b.b_zw
+                - a.b_zw * b.b_yz
+                + a.b_xz * b.p
+                + a.p * b.b_xz;
 
         // ZW bivector
-        let b_zw = a.s * b.b_zw + a.b_zw * b.s
-            - a.b_xz * b.b_xw + a.b_xw * b.b_xz
-            - a.b_yz * b.b_yw + a.b_yw * b.b_yz
-            - a.b_xy * b.p - a.p * b.b_xy;
+        let b_zw = a.s * b.b_zw + a.b_zw * b.s - a.b_xz * b.b_xw + a.b_xw * b.b_xz
+            - a.b_yz * b.b_yw
+            + a.b_yw * b.b_yz
+            - a.b_xy * b.p
+            - a.p * b.b_xy;
 
         // Pseudoscalar
-        let p = a.s * b.p + a.p * b.s
-            + a.b_xy * b.b_zw + a.b_zw * b.b_xy
-            - a.b_xz * b.b_yw - a.b_yw * b.b_xz
-            + a.b_xw * b.b_yz + a.b_yz * b.b_xw;
+        let p = a.s * b.p + a.p * b.s + a.b_xy * b.b_zw + a.b_zw * b.b_xy
+            - a.b_xz * b.b_yw
+            - a.b_yw * b.b_xz
+            + a.b_xw * b.b_yz
+            + a.b_yz * b.b_xw;
 
         Self {
             s,
@@ -421,12 +428,20 @@ mod tests {
         // Rotating X by 90° in XY plane should give Y
         let v = Vec4::X;
         let rotated = r.rotate(v);
-        assert!(vec_approx_eq(rotated, Vec4::Y), "Expected Y, got {:?}", rotated);
+        assert!(
+            vec_approx_eq(rotated, Vec4::Y),
+            "Expected Y, got {:?}",
+            rotated
+        );
 
         // Rotating Y by 90° in XY plane should give -X
         let v = Vec4::Y;
         let rotated = r.rotate(v);
-        assert!(vec_approx_eq(rotated, -Vec4::X), "Expected -X, got {:?}", rotated);
+        assert!(
+            vec_approx_eq(rotated, -Vec4::X),
+            "Expected -X, got {:?}",
+            rotated
+        );
     }
 
     #[test]
@@ -436,7 +451,11 @@ mod tests {
         // Rotating X by 90° in XZ plane should give Z
         let v = Vec4::X;
         let rotated = r.rotate(v);
-        assert!(vec_approx_eq(rotated, Vec4::Z), "Expected Z, got {:?}", rotated);
+        assert!(
+            vec_approx_eq(rotated, Vec4::Z),
+            "Expected Z, got {:?}",
+            rotated
+        );
     }
 
     #[test]
@@ -446,7 +465,11 @@ mod tests {
         // Rotating Z by 90° in ZW plane should give W
         let v = Vec4::Z;
         let rotated = r.rotate(v);
-        assert!(vec_approx_eq(rotated, Vec4::W), "Expected W, got {:?}", rotated);
+        assert!(
+            vec_approx_eq(rotated, Vec4::W),
+            "Expected W, got {:?}",
+            rotated
+        );
     }
 
     #[test]
@@ -474,7 +497,11 @@ mod tests {
 
         let composed = r.compose(&r_inv);
         // Should be close to identity
-        assert!(approx_eq(composed.normalize().s, 1.0), "Expected identity, got {:?}", composed);
+        assert!(
+            approx_eq(composed.normalize().s, 1.0),
+            "Expected identity, got {:?}",
+            composed
+        );
     }
 
     #[test]
@@ -485,7 +512,11 @@ mod tests {
 
         let v = Vec4::new(1.0, 2.0, 3.0, 4.0);
         let rotated = composed.normalize().rotate(v);
-        assert!(vec_approx_eq(v, rotated), "Expected original, got {:?}", rotated);
+        assert!(
+            vec_approx_eq(v, rotated),
+            "Expected original, got {:?}",
+            rotated
+        );
     }
 
     #[test]
@@ -505,10 +536,30 @@ mod tests {
         let m = r.to_matrix();
 
         // Should be identity matrix
-        assert!(approx_eq(m[0][0], 1.0) && approx_eq(m[0][1], 0.0) && approx_eq(m[0][2], 0.0) && approx_eq(m[0][3], 0.0));
-        assert!(approx_eq(m[1][0], 0.0) && approx_eq(m[1][1], 1.0) && approx_eq(m[1][2], 0.0) && approx_eq(m[1][3], 0.0));
-        assert!(approx_eq(m[2][0], 0.0) && approx_eq(m[2][1], 0.0) && approx_eq(m[2][2], 1.0) && approx_eq(m[2][3], 0.0));
-        assert!(approx_eq(m[3][0], 0.0) && approx_eq(m[3][1], 0.0) && approx_eq(m[3][2], 0.0) && approx_eq(m[3][3], 1.0));
+        assert!(
+            approx_eq(m[0][0], 1.0)
+                && approx_eq(m[0][1], 0.0)
+                && approx_eq(m[0][2], 0.0)
+                && approx_eq(m[0][3], 0.0)
+        );
+        assert!(
+            approx_eq(m[1][0], 0.0)
+                && approx_eq(m[1][1], 1.0)
+                && approx_eq(m[1][2], 0.0)
+                && approx_eq(m[1][3], 0.0)
+        );
+        assert!(
+            approx_eq(m[2][0], 0.0)
+                && approx_eq(m[2][1], 0.0)
+                && approx_eq(m[2][2], 1.0)
+                && approx_eq(m[2][3], 0.0)
+        );
+        assert!(
+            approx_eq(m[3][0], 0.0)
+                && approx_eq(m[3][1], 0.0)
+                && approx_eq(m[3][2], 0.0)
+                && approx_eq(m[3][3], 1.0)
+        );
     }
 
     #[test]
@@ -518,15 +569,27 @@ mod tests {
 
         // X should be unchanged
         let rotated_x = r.rotate(Vec4::X);
-        assert!(vec_approx_eq(rotated_x, Vec4::X), "X should be unchanged, got {:?}", rotated_x);
+        assert!(
+            vec_approx_eq(rotated_x, Vec4::X),
+            "X should be unchanged, got {:?}",
+            rotated_x
+        );
 
         // Y should go to Z
         let rotated_y = r.rotate(Vec4::Y);
-        assert!(vec_approx_eq(rotated_y, Vec4::Z), "Y should become Z, got {:?}", rotated_y);
+        assert!(
+            vec_approx_eq(rotated_y, Vec4::Z),
+            "Y should become Z, got {:?}",
+            rotated_y
+        );
 
         // Z should go to -Y
         let rotated_z = r.rotate(Vec4::Z);
-        assert!(vec_approx_eq(rotated_z, -Vec4::Y), "Z should become -Y, got {:?}", rotated_z);
+        assert!(
+            vec_approx_eq(rotated_z, -Vec4::Y),
+            "Z should become -Y, got {:?}",
+            rotated_z
+        );
     }
 
     #[test]
@@ -543,10 +606,26 @@ mod tests {
         let w = composed.rotate(Vec4::W);
 
         // Check lengths are preserved
-        assert!(approx_eq(x.length(), 1.0), "X length not preserved: {}", x.length());
-        assert!(approx_eq(y.length(), 1.0), "Y length not preserved: {}", y.length());
-        assert!(approx_eq(z.length(), 1.0), "Z length not preserved: {}", z.length());
-        assert!(approx_eq(w.length(), 1.0), "W length not preserved: {}", w.length());
+        assert!(
+            approx_eq(x.length(), 1.0),
+            "X length not preserved: {}",
+            x.length()
+        );
+        assert!(
+            approx_eq(y.length(), 1.0),
+            "Y length not preserved: {}",
+            y.length()
+        );
+        assert!(
+            approx_eq(z.length(), 1.0),
+            "Z length not preserved: {}",
+            z.length()
+        );
+        assert!(
+            approx_eq(w.length(), 1.0),
+            "W length not preserved: {}",
+            w.length()
+        );
 
         // Check orthogonality (dot products should be 0)
         assert!(approx_eq(x.dot(y), 0.0), "X.Y not orthogonal: {}", x.dot(y));
@@ -565,17 +644,28 @@ mod tests {
         let r_roll_w = Rotor4::from_plane_angle(RotationPlane::ZW, 0.2);
         let r_roll_xw = Rotor4::from_plane_angle(RotationPlane::XW, 0.1);
 
-        let composed = r_roll_xw.compose(&r_roll_w.compose(&r_pitch.compose(&r_yaw))).normalize();
+        let composed = r_roll_xw
+            .compose(&r_roll_w.compose(&r_pitch.compose(&r_yaw)))
+            .normalize();
 
         // Verify it's still a unit rotor
-        assert!(approx_eq(composed.magnitude(), 1.0), "Composed rotor not unit: {}", composed.magnitude());
+        assert!(
+            approx_eq(composed.magnitude(), 1.0),
+            "Composed rotor not unit: {}",
+            composed.magnitude()
+        );
 
         // Verify rotation preserves lengths (use slightly larger epsilon for accumulated error)
         let v = Vec4::new(1.0, 2.0, 3.0, 4.0);
         let rotated = composed.rotate(v);
         let length_error = (v.length() - rotated.length()).abs();
-        assert!(length_error < 0.001,
-            "Length not preserved: {} vs {} (error: {})", v.length(), rotated.length(), length_error);
+        assert!(
+            length_error < 0.001,
+            "Length not preserved: {} vs {} (error: {})",
+            v.length(),
+            rotated.length(),
+            length_error
+        );
     }
 
     #[test]
@@ -599,8 +689,12 @@ mod tests {
             m[0][3] * v.x + m[1][3] * v.y + m[2][3] * v.z + m[3][3] * v.w,
         );
 
-        assert!(vec_approx_eq(rotated_rotor, rotated_matrix),
-            "Rotor and matrix give different results: {:?} vs {:?}", rotated_rotor, rotated_matrix);
+        assert!(
+            vec_approx_eq(rotated_rotor, rotated_matrix),
+            "Rotor and matrix give different results: {:?} vs {:?}",
+            rotated_rotor,
+            rotated_matrix
+        );
     }
 
     #[test]
@@ -616,12 +710,22 @@ mod tests {
         // Check that column vectors are orthonormal
         for i in 0..4 {
             let col_i = Vec4::new(m[i][0], m[i][1], m[i][2], m[i][3]);
-            assert!(approx_eq(col_i.length(), 1.0), "Column {} not unit length", i);
+            assert!(
+                approx_eq(col_i.length(), 1.0),
+                "Column {} not unit length",
+                i
+            );
 
-            for j in (i+1)..4 {
+            for j in (i + 1)..4 {
                 let col_j = Vec4::new(m[j][0], m[j][1], m[j][2], m[j][3]);
                 let dot = col_i.dot(col_j);
-                assert!(approx_eq(dot, 0.0), "Columns {} and {} not orthogonal: dot = {}", i, j, dot);
+                assert!(
+                    approx_eq(dot, 0.0),
+                    "Columns {} and {} not orthogonal: dot = {}",
+                    i,
+                    j,
+                    dot
+                );
             }
         }
     }
@@ -640,8 +744,12 @@ mod tests {
         let rotated_composed = composed.rotate(v);
         let rotated_expected = expected.rotate(v);
 
-        assert!(vec_approx_eq(rotated_composed, rotated_expected),
-            "Same-plane composition failed: {:?} vs {:?}", rotated_composed, rotated_expected);
+        assert!(
+            vec_approx_eq(rotated_composed, rotated_expected),
+            "Same-plane composition failed: {:?} vs {:?}",
+            rotated_composed,
+            rotated_expected
+        );
     }
 
     #[test]
@@ -660,8 +768,12 @@ mod tests {
         let composed = r_yz.compose(&r_xz);
         let result = composed.rotate(v);
 
-        assert!(vec_approx_eq(step2, result),
-            "Sequential {:?} vs composed {:?}", step2, result);
+        assert!(
+            vec_approx_eq(step2, result),
+            "Sequential {:?} vs composed {:?}",
+            step2,
+            result
+        );
     }
 
     #[test]
@@ -673,13 +785,18 @@ mod tests {
 
         println!("r_xz: s={}, b_xz={}", r_xz.s, r_xz.b_xz);
         println!("r_yz: s={}, b_yz={}", r_yz.s, r_yz.b_yz);
-        println!("composed: s={}, b_xy={}, b_xz={}, b_yz={}, p={}",
-            composed.s, composed.b_xy, composed.b_xz, composed.b_yz, composed.p);
+        println!(
+            "composed: s={}, b_xy={}, b_xz={}, b_yz={}, p={}",
+            composed.s, composed.b_xy, composed.b_xz, composed.b_yz, composed.p
+        );
         println!("composed magnitude: {}", composed.magnitude());
 
         // The composed rotor should be a unit rotor
-        assert!(approx_eq(composed.magnitude(), 1.0),
-            "Composed rotor not unit: {}", composed.magnitude());
+        assert!(
+            approx_eq(composed.magnitude(), 1.0),
+            "Composed rotor not unit: {}",
+            composed.magnitude()
+        );
     }
 
     #[test]
@@ -695,10 +812,22 @@ mod tests {
         // Print the rotation matrix
         let m = composed.to_matrix();
         println!("Rotation matrix for composed rotor:");
-        println!("[{:6.3} {:6.3} {:6.3} {:6.3}]", m[0][0], m[0][1], m[0][2], m[0][3]);
-        println!("[{:6.3} {:6.3} {:6.3} {:6.3}]", m[1][0], m[1][1], m[1][2], m[1][3]);
-        println!("[{:6.3} {:6.3} {:6.3} {:6.3}]", m[2][0], m[2][1], m[2][2], m[2][3]);
-        println!("[{:6.3} {:6.3} {:6.3} {:6.3}]", m[3][0], m[3][1], m[3][2], m[3][3]);
+        println!(
+            "[{:6.3} {:6.3} {:6.3} {:6.3}]",
+            m[0][0], m[0][1], m[0][2], m[0][3]
+        );
+        println!(
+            "[{:6.3} {:6.3} {:6.3} {:6.3}]",
+            m[1][0], m[1][1], m[1][2], m[1][3]
+        );
+        println!(
+            "[{:6.3} {:6.3} {:6.3} {:6.3}]",
+            m[2][0], m[2][1], m[2][2], m[2][3]
+        );
+        println!(
+            "[{:6.3} {:6.3} {:6.3} {:6.3}]",
+            m[3][0], m[3][1], m[3][2], m[3][3]
+        );
 
         // The correct matrix should have:
         // Column 0 (what X maps to): (0, -1, 0, 0) based on GA calculation
@@ -710,6 +839,9 @@ mod tests {
         println!("X via composed: {:?}", x_via_composed);
 
         // The first column of the matrix tells us where X goes
-        println!("Matrix column 0: ({}, {}, {}, {})", m[0][0], m[1][0], m[2][0], m[3][0]);
+        println!(
+            "Matrix column 0: ({}, {}, {}, {})",
+            m[0][0], m[1][0], m[2][0], m[3][0]
+        );
     }
 }

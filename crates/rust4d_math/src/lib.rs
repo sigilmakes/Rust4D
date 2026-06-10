@@ -22,23 +22,23 @@
 //! 16-cell, 24-cell, 600-cell) and the curved shapes (hypersphere,
 //! spherinder, cubinder, duocylinder) as watertight boundary meshes.
 
-mod vec4;
-mod rotor4;
+pub mod hyperplane;
+pub mod interpolation;
 pub mod mat4;
 pub mod mesh4d;
 pub mod primitives;
 pub mod ray;
+mod rotor4;
 pub mod shape;
 pub mod tesseract;
-pub mod hyperplane;
-pub mod interpolation;
+mod vec4;
 
-pub use mesh4d::{Mesh4D, MeshError};
-pub use vec4::Vec4;
-pub use rotor4::{Rotor4, RotationPlane};
-pub use mat4::Mat4;
-pub use ray::Ray4D;
-pub use shape::{ConvexShape4D, Tetrahedron};
-pub use tesseract::Tesseract4D;
 pub use hyperplane::Hyperplane4D;
 pub use interpolation::Interpolatable;
+pub use mat4::Mat4;
+pub use mesh4d::{Mesh4D, MeshError};
+pub use ray::Ray4D;
+pub use rotor4::{RotationPlane, Rotor4};
+pub use shape::{ConvexShape4D, Tetrahedron};
+pub use tesseract::Tesseract4D;
+pub use vec4::Vec4;

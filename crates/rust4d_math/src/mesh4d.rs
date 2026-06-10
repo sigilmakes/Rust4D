@@ -26,7 +26,7 @@
 //!   Gram determinants (correct for any embedding in 4D); used heavily by
 //!   the primitive test suites to pin constructions against closed forms
 
-use crate::{ConvexShape4D, Mat4, Tetrahedron, Vec4, mat4};
+use crate::{mat4, ConvexShape4D, Mat4, Tetrahedron, Vec4};
 
 /// A general 4D tetrahedral mesh: vertices + tetrahedral cells.
 ///
@@ -59,7 +59,10 @@ impl std::fmt::Display for MeshError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MeshError::IndexOutOfBounds { tet, index } => {
-                write!(f, "tetrahedron {tet} references out-of-bounds vertex {index}")
+                write!(
+                    f,
+                    "tetrahedron {tet} references out-of-bounds vertex {index}"
+                )
             }
             MeshError::DegenerateCell { tet } => {
                 write!(f, "tetrahedron {tet} has repeated vertex indices")
@@ -81,7 +84,10 @@ impl Mesh4D {
     /// Use [`Mesh4D::validate`] afterwards if the data comes from an
     /// untrusted source (e.g. a file).
     pub fn from_parts(vertices: Vec<Vec4>, tetrahedra: Vec<Tetrahedron>) -> Self {
-        Self { vertices, tetrahedra }
+        Self {
+            vertices,
+            tetrahedra,
+        }
     }
 
     /// Create an empty mesh with pre-allocated capacity.
@@ -240,18 +246,25 @@ impl Mesh4D {
         let mut min = first;
         let mut max = first;
         for v in &self.vertices[1..] {
-            min = Vec4::new(min.x.min(v.x), min.y.min(v.y), min.z.min(v.z), min.w.min(v.w));
-            max = Vec4::new(max.x.max(v.x), max.y.max(v.y), max.z.max(v.z), max.w.max(v.w));
+            min = Vec4::new(
+                min.x.min(v.x),
+                min.y.min(v.y),
+                min.z.min(v.z),
+                min.w.min(v.w),
+            );
+            max = Vec4::new(
+                max.x.max(v.x),
+                max.y.max(v.y),
+                max.z.max(v.z),
+                max.w.max(v.w),
+            );
         }
         Some((min, max))
     }
 
     /// Radius of the smallest origin-centered ball containing all vertices.
     pub fn bounding_radius(&self) -> f32 {
-        self.vertices
-            .iter()
-            .map(|v| v.length())
-            .fold(0.0, f32::max)
+        self.vertices.iter().map(|v| v.length()).fold(0.0, f32::max)
     }
 
     /// 3-volume of a single cell.
@@ -427,10 +440,7 @@ mod tests {
 
     #[test]
     fn test_validate_catches_out_of_bounds() {
-        let m = Mesh4D::from_parts(
-            vec![Vec4::ZERO],
-            vec![Tetrahedron::new([0, 0, 0, 7])],
-        );
+        let m = Mesh4D::from_parts(vec![Vec4::ZERO], vec![Tetrahedron::new([0, 0, 0, 7])]);
         assert!(matches!(
             m.validate(),
             Err(MeshError::IndexOutOfBounds { index: 7, .. })
@@ -439,11 +449,11 @@ mod tests {
 
     #[test]
     fn test_validate_catches_degenerate() {
-        let m = Mesh4D::from_parts(
-            vec![Vec4::ZERO; 4],
-            vec![Tetrahedron::new([0, 1, 2, 2])],
-        );
-        assert!(matches!(m.validate(), Err(MeshError::DegenerateCell { tet: 0 })));
+        let m = Mesh4D::from_parts(vec![Vec4::ZERO; 4], vec![Tetrahedron::new([0, 1, 2, 2])]);
+        assert!(matches!(
+            m.validate(),
+            Err(MeshError::DegenerateCell { tet: 0 })
+        ));
     }
 
     #[test]

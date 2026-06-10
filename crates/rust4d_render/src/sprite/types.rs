@@ -28,7 +28,13 @@ pub struct SpriteSheet {
 
 impl SpriteSheet {
     /// Create a new sprite sheet with the given parameters
-    pub fn new(name: impl Into<String>, frame_width: u32, frame_height: u32, columns: u32, rows: u32) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        frame_width: u32,
+        frame_height: u32,
+        columns: u32,
+        rows: u32,
+    ) -> Self {
         Self {
             name: name.into(),
             frame_width,
@@ -114,7 +120,7 @@ impl Sprite {
             sheet_name: sheet_name.into(),
             frame: 0,
             size: [1.0, 1.0],
-            w_fade_range: 2.0, // Default fade range of 2 world units
+            w_fade_range: 2.0,                // Default fade range of 2 world units
             color_tint: [1.0, 1.0, 1.0, 1.0], // White (no tint)
         }
     }
@@ -179,7 +185,8 @@ impl WFadeConfig {
         debug_assert!(
             fade_end > fade_start,
             "WFadeConfig: fade_end ({}) must be greater than fade_start ({})",
-            fade_end, fade_start
+            fade_end,
+            fade_start
         );
         Self {
             current_w,
@@ -241,8 +248,8 @@ mod tests {
 
         // First frame (top-left)
         let uvs = sheet.frame_uvs(0);
-        assert_eq!(uvs[0], 0.0);  // u_min
-        assert_eq!(uvs[1], 0.0);  // v_min
+        assert_eq!(uvs[0], 0.0); // u_min
+        assert_eq!(uvs[1], 0.0); // v_min
         assert_eq!(uvs[2], 0.25); // u_max
         assert_eq!(uvs[3], 0.25); // v_max
 
