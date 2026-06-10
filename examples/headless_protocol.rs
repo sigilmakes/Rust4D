@@ -153,8 +153,6 @@ impl HeadlessGpu {
             tetrahedron_count,
             _padding: [0.0; 2],
             camera_matrix,
-            camera_eye: [pos.x, pos.y, pos.z],
-            _padding2: 0.0,
             camera_position: [pos.x, pos.y, pos.z, pos.w],
         };
         self.slice_pipeline.update_params(&self.queue, &slice_params);
