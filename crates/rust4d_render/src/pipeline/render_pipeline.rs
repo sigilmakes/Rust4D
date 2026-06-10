@@ -288,6 +288,14 @@ impl RenderPipeline {
 }
 
 /// Helper to create a perspective projection matrix
+///
+/// Produces a right-handed projection mapping the view frustum to wgpu's
+/// clip space: X/Y in [-1, 1], **depth in [0, 1]** (D3D/Metal/WebGPU
+/// convention). Points on the near plane map to depth 0, far plane to 1.
+///
+/// Note: OpenGL's [-1, 1] depth convention is WRONG here — it compresses
+/// the near half of the depth range below 0, which the rasterizer clips,
+/// making geometry closer than √(near·far) disappear.
 pub fn perspective_matrix(fov_y: f32, aspect: f32, near: f32, far: f32) -> [[f32; 4]; 4] {
     let f = 1.0 / (fov_y / 2.0).tan();
     let nf = 1.0 / (near - far);
@@ -295,8 +303,8 @@ pub fn perspective_matrix(fov_y: f32, aspect: f32, near: f32, far: f32) -> [[f32
     [
         [f / aspect, 0.0, 0.0, 0.0],
         [0.0, f, 0.0, 0.0],
-        [0.0, 0.0, (far + near) * nf, -1.0],
-        [0.0, 0.0, 2.0 * far * near * nf, 0.0],
+        [0.0, 0.0, far * nf, -1.0],
+        [0.0, 0.0, far * near * nf, 0.0],
     ]
 }
 
@@ -366,6 +374,41 @@ mod tests {
         // Check it's not all zeros
         assert!(proj[0][0] != 0.0);
         assert!(proj[1][1] != 0.0);
+    }
+
+    /// Apply the projection to a camera-space point and perspective-divide.
+    fn project(proj: [[f32; 4]; 4], p: [f32; 3]) -> [f32; 3] {
+        let v = [p[0], p[1], p[2], 1.0f32];
+        let mut out = [0.0f32; 4];
+        for (col, out_c) in out.iter_mut().enumerate() {
+            for (row, &v_r) in v.iter().enumerate() {
+                *out_c += proj[row][col] * v_r;
+            }
+        }
+        [out[0] / out[3], out[1] / out[3], out[2] / out[3]]
+    }
+
+    #[test]
+    fn test_perspective_depth_range_is_wgpu_zero_to_one() {
+        let (near, far) = (0.1f32, 100.0f32);
+        let proj = perspective_matrix(std::f32::consts::FRAC_PI_4, 1.0, near, far);
+
+        // Near plane (z = -near) must map to depth 0, far plane to depth 1.
+        let d_near = project(proj, [0.0, 0.0, -near])[2];
+        let d_far = project(proj, [0.0, 0.0, -far])[2];
+        assert!(d_near.abs() < 1e-5, "near plane depth should be 0, got {d_near}");
+        assert!((d_far - 1.0).abs() < 1e-5, "far plane depth should be 1, got {d_far}");
+
+        // Every depth between near and far must stay inside [0, 1] — the
+        // OpenGL convention put anything closer than √(near·far) below 0,
+        // which wgpu clips away (the "disappearing geometry" bug).
+        for z in [0.2f32, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 50.0, 99.0] {
+            let d = project(proj, [0.0, 0.0, -z])[2];
+            assert!(
+                (0.0..=1.0).contains(&d),
+                "depth for z={z} out of [0,1]: {d} — would be clipped"
+            );
+        }
     }
 
     #[test]
