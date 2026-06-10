@@ -78,14 +78,26 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed diagrams and data flow.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/rust4d
-cd rust4d
+git clone https://github.com/Lemon9247/Rust4D
+cd Rust4D
 
 # Run the main application
 cargo run --release
 
 # Or try an example
 cargo run --example 01_hello_tesseract
+```
+
+On NixOS (or with Nix installed), use the dev shell — it provides the Rust
+toolchain, Vulkan wiring, and the imaging tools used for visual verification:
+
+```bash
+nix develop
+cargo test --workspace
+
+# Headless rendering verification: captures protocol frames as PPM images
+# plus numeric slice-plane logs, without opening a window
+cargo run --example headless_protocol .scratchpad/captures
 ```
 
 ### Quick Start with Examples
