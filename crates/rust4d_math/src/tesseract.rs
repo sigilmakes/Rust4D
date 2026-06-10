@@ -163,7 +163,7 @@ mod tests {
     fn test_tesseract_tetrahedron_count() {
         let t = Tesseract4D::new(2.0);
         // Should have some reasonable number of tetrahedra
-        assert!(t.tetrahedra().len() > 0);
+        assert!(!t.tetrahedra().is_empty());
         assert!(t.tetrahedra().len() <= 120); // Max: 24 * 5 before deduplication
     }
 

@@ -263,6 +263,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)] // index used across two tables
     fn test_tetra_tri_indices_valid() {
         for case_idx in 0..16 {
             let edge_mask = TETRA_EDGE_TABLE[case_idx];

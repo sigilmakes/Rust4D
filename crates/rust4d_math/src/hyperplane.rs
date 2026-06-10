@@ -209,7 +209,7 @@ mod tests {
 
         // 4x4 grid = 16 cells, each with 16 vertices
         assert_eq!(plane.vertices().len(), 16 * 16);
-        assert!(plane.tetrahedra().len() > 0);
+        assert!(!plane.tetrahedra().is_empty());
     }
 
     #[test]

@@ -104,6 +104,7 @@ impl EasingFunction {
     ///
     /// If you need `FromStr` for integration with other Rust APIs (e.g., serde, clap),
     /// you can use the [`std::str::FromStr`] implementation which wraps this method.
+    #[allow(clippy::should_implement_trait)] // FromStr IS implemented; this is the documented Option-returning convenience
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "linear" => Some(Self::Linear),
@@ -332,7 +333,7 @@ pub type TweenId = u64;
 ///
 /// # Current Limitations
 ///
-/// The manager currently only supports **position tweens** (animating [`Transform4D::position`]).
+/// The manager currently only supports **position tweens** (animating `Transform4D::position`).
 /// Other properties that could benefit from tweening are not yet supported:
 ///
 /// - **Rotation** (`Rotor4`): Would need separate tracking via `rotation_tweens` map

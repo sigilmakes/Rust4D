@@ -114,25 +114,38 @@ Key design principle: `rust4d_math` has no internal dependencies and can be used
 
 ## Development Environment
 
-### Setup
+### Setup with Nix (recommended)
+
+The repository ships a `flake.nix` providing the full development environment:
+Rust toolchain, clippy/rustfmt/rust-analyzer, Vulkan loader + validation
+layers + lavapipe (software rasterizer for headless GPU work), and the imaging
+tools used by the visual verification workflow (grim, imagemagick).
+
+```bash
+git clone https://github.com/sigilmakes/Rust4D.git
+cd Rust4D
+nix develop                       # or: nix develop --command <cmd>
+cargo test --workspace
+cargo run
+```
+
+On NixOS the shell hook wires the system Vulkan ICDs automatically
+(`/run/opengl-driver/share/vulkan/icd.d` → `VK_DRIVER_FILES`).
+
+### Manual setup
 
 1. **Install Rust**: Use rustup to install the latest stable Rust toolchain.
 
-2. **Clone the repository**:
+2. **Clone and build**:
    ```bash
-   git clone https://github.com/your-username/Rust4D.git
+   git clone https://github.com/sigilmakes/Rust4D.git
    cd Rust4D
-   ```
-
-3. **Build the project**:
-   ```bash
    cargo build
-   ```
-
-4. **Run the main application**:
-   ```bash
    cargo run
    ```
+
+   You'll need a working Vulkan/Metal/DX12 driver and, on Linux, ALSA headers
+   (`alsa-lib`/`libasound2-dev`) for the audio crate.
 
 ### Recommended Tools
 
@@ -884,12 +897,73 @@ fn test_scene_dynamic_entity_falls_to_floor() {
 | rust4d_render | GPU buffer sizes, lookup tables | Inline in lookup_tables.rs |
 | rust4d_input | Input state handling | Minimal (mostly integration) |
 
+### The Slice Invariant Suite
+
+`tests/slice_invariant.rs` guards the engine's core correctness property (see
+[The Mathematics of Rust4D](./4d-math.md#the-slice-invariant)): WASD movement
+must never drift the camera across its own slice hyperplane, or every
+cross-section on screen morphs while walking.
+
+The suite drives the **real app stack** — `scenes/default.ron`, the physics
+world, `CameraController`, `CharacterController4D`, and `SimulationSystem` —
+using `SimulationSystem::update_with_dt` for deterministic fixed timesteps.
+It asserts `dot(ana, p − cam_pos)` stays constant for a reference world point
+across: no rotation, 45° ZW rotation, combined ZW+XW+yaw rotations, and
+pitched movement; plus sanity checks that Q/E *does* change the slice and
+WASD actually moves the player.
+
+Run it after any change to camera, movement, physics, or input code:
+
+```bash
+cargo test --test slice_invariant
+```
+
+On failure it prints `[MOVE]`/`[CAM]` lines with camera positions, ana
+vectors, and per-frame drift so you can see exactly when and how fast the
+slice plane moved.
+
+### Headless Visual Verification
+
+For rendering-path changes (shaders, pipelines, projection, camera matrices),
+numeric tests aren't enough — you want to see frames. The headless harness
+renders a scripted protocol through the real slice + render pipelines into
+offscreen textures, with no window or compositor needed:
+
+```bash
+cargo run --example headless_protocol .scratchpad/captures
+```
+
+It walks the protocol (baseline → strafe control → 45° 4D rotation →
+strafe/forward after rotation → near approach), saving a PPM frame and
+printing numeric state at each step:
+
+```
+[CAPTURE] 11-strafe-after-rotation.ppm cam=(-1.061,-1.500,5.000,0.707) triangles=5856
+[STATE]   11-strafe-after-rotation: slice_w(tesseract)=0.000000 tris=5856
+```
+
+Interpretation:
+- `slice_w(tesseract)` must stay constant within every WASD phase — that's
+  the invariant, measured against the actual render parameters.
+- Cross-section **shape and colors** must stay constant within a phase
+  (translation and parallax are fine; shrinking or color-gradient shifts mean
+  the slice plane is drifting).
+- Convert frames for viewing with `magick frame.ppm frame.png`; build
+  side-by-side comparisons of two revisions with `magick a.png b.png +append cmp.png`.
+
+This is how the 4D movement bug was finally pinned down after multiple rounds
+of purely theoretical analysis failed: instrument the pipeline, run it, read
+the numbers, look at the frames.
+
 ### Adding New Tests
 
 1. **Unit test**: Add to the `#[cfg(test)]` module in the relevant file
 2. **Integration test**: Add to `tests/` directory with `#[test]` attribute
 3. **Run specific test**: `cargo test -p crate_name test_name`
-4. **Verify all tests pass**: `cargo test --all`
+4. **Verify all tests pass**: `cargo test --workspace`
+5. **Convention-pinning tests**: if you fix a bug rooted in a math or layout
+   convention (matrix order, depth range, rotation planes, struct layout),
+   add a test that pins the convention and update [4d-math.md](./4d-math.md)
 
 ## Performance
 

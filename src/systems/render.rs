@@ -94,7 +94,8 @@ impl RenderSystem {
             &geometry.vertices,
             &geometry.tetrahedra,
         );
-        log::info!(
+        // trace, not info: dynamic scenes re-upload every frame while bodies move
+        log::trace!(
             "Uploaded {} vertices and {} tetrahedra",
             geometry.vertex_count(),
             geometry.tetrahedron_count()
@@ -108,7 +109,6 @@ impl RenderSystem {
         geometry: &RenderableGeometry,
     ) -> Result<(), RenderError> {
         let pos = camera.position;
-        let eye_3d = [pos.x, pos.y, pos.z];
         let camera_pos_4d = [pos.x, pos.y, pos.z, pos.w];
 
         // Update slice parameters
@@ -118,8 +118,6 @@ impl RenderSystem {
             tetrahedron_count: geometry.tetrahedron_count() as u32,
             _padding: [0.0; 2],
             camera_matrix,
-            camera_eye: eye_3d,
-            _padding2: 0.0,
             camera_position: camera_pos_4d,
         };
         self.slice_pipeline

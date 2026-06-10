@@ -19,6 +19,9 @@ cargo run --example 04_camera_exploration
 | 02_multiple_shapes | Multiple objects with colors | Transform4D, Material, keyboard input |
 | 03_physics_demo | Physics with gravity | PhysicsConfig, RigidBody4D, collision |
 | 04_camera_exploration | Full camera controls | CameraController, mouse look, 4D navigation |
+| 05_audio_demo | 4D spatial audio | AudioEngine, bus routing, W-distance attenuation |
+| ron_preview | Scene file viewer | RON scene loading |
+| headless_protocol | **Automated visual verification** — renders a scripted movement protocol offscreen, saves PPM frames + numeric slice-plane logs. No window needed. | Offscreen wgpu, slice invariant, screenshot diffing |
 
 ## Learning Path
 

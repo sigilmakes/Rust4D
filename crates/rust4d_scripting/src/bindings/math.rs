@@ -348,7 +348,7 @@ impl LuaUserData for LuaTransform4D {
 
         // Translate by offset
         methods.add_method_mut("translate", |_, this, offset: LuaVec4| {
-            this.position = this.position + offset.0;
+            this.position += offset.0;
             Ok(())
         });
 

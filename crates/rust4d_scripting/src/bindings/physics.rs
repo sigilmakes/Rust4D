@@ -607,8 +607,10 @@ mod tests {
         let lua = Lua::new();
 
         // Set up a custom PhysicsConfig with non-default gravity
-        let mut config = PhysicsConfig::default();
-        config.gravity = -9.81; // Earth gravity instead of default -20
+        let config = PhysicsConfig {
+            gravity: -9.81, // Earth gravity instead of default -20
+            ..Default::default()
+        };
         lua.set_app_data(config);
 
         // Register bindings

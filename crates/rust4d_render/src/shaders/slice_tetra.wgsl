@@ -64,8 +64,6 @@ struct SliceParams {
     _pad0: f32,
     _pad1: f32,
     camera_matrix: mat4x4<f32>,  // Camera-local to world (needs transpose for view)
-    camera_eye: vec3<f32>,
-    _pad2: f32,
     camera_position: vec4<f32>,  // 4D camera position
 }
 
@@ -296,8 +294,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         // Ensure normals face toward the camera.
         // In camera space the camera is at the origin, so the direction
         // from the triangle to the camera is simply -tri_center.
-        // (The old bug used params.camera_eye which was in world space,
-        // not camera space, causing incorrect flips when the camera rotated.)
         let tri_center = (p0 + p1 + p2) / 3.0;
         let to_camera = -tri_center;
         if (dot(normal, to_camera) < 0.0) {

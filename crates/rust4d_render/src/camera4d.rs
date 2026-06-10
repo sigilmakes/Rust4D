@@ -117,26 +117,34 @@ impl Camera4D {
 
     /// 4D W-rotation (ZW plane)
     ///
-    /// Rotates the view into the 4th dimension. After SkipY transformation,
-    /// this affects how the XZW hyperplane is oriented but never touches Y.
+    /// Rotates the view into the 4th dimension: positive `delta` tilts the
+    /// forward axis (-Z) toward the camera's ana axis (+W at identity).
+    /// Never touches Y.
+    ///
+    /// SkipY maps the 3D rotation axes (X, Y, Z) onto the 4D axes (X, Z, W),
+    /// so the pre-SkipY YZ plane becomes the 4D ZW plane.
     pub fn rotate_w(&mut self, delta: f32) {
         if delta.abs() > 0.0001 {
-            // In the 3D rotation space (before SkipY), this is a Y rotation
-            // After SkipY: Y→Z, so this becomes a rotation affecting Z and W
-            let r = Rotor4::from_plane_angle(RotationPlane::XZ, -delta);
+            // Pre-SkipY YZ-plane rotation (about the 3D X axis) → 4D ZW plane.
+            // from_plane_angle(YZ, δ) takes Z→W by +δ; negate so that
+            // forward (-Z) tilts toward +W for positive delta.
+            let r = Rotor4::from_plane_angle(RotationPlane::YZ, -delta);
             self.rotation_4d = self.rotation_4d.compose(&r).normalize();
         }
     }
 
     /// 4D XW rotation
     ///
-    /// Rotates in the XW plane. After SkipY transformation, this affects
-    /// X and W but never touches Y.
+    /// Rotates in the XW plane: positive `delta` tilts the right axis (+X)
+    /// toward the camera's ana axis (+W at identity). Never touches Y.
+    ///
+    /// SkipY maps the 3D rotation axes (X, Y, Z) onto the 4D axes (X, Z, W),
+    /// so the pre-SkipY XZ plane becomes the 4D XW plane.
     pub fn rotate_xw(&mut self, delta: f32) {
         if delta.abs() > 0.0001 {
-            // In the 3D rotation space (before SkipY), this is an X rotation
-            // After SkipY: X→X, Z→W, so this becomes XW rotation
-            let r = Rotor4::from_plane_angle(RotationPlane::YZ, delta);
+            // Pre-SkipY XZ-plane rotation (about the 3D Y axis) → 4D XW plane.
+            // from_plane_angle(XZ, δ) takes X→W by +δ.
+            let r = Rotor4::from_plane_angle(RotationPlane::XZ, delta);
             self.rotation_4d = self.rotation_4d.compose(&r).normalize();
         }
     }
@@ -517,18 +525,23 @@ mod tests {
         assert!(ana_before.x.abs() < 0.1,
             "Initial ana X should be ~0, got {}", ana_before.x);
 
-        // After 90° rotation in XW plane (via rotate_w), ana should change
+        // After 90° rotation in the ZW plane (via rotate_w), ana should change
         cam.rotate_w(FRAC_PI_2);
 
         let ana_after = cam.ana();
         eprintln!("ana_after: ({:.4}, {:.4}, {:.4}, {:.4})",
             ana_after.x, ana_after.y, ana_after.z, ana_after.w);
 
-        // After 90° XW rotation, W axis should point in X direction (or -X)
+        // After 90° ZW rotation, the W axis should point along Z
         assert!(ana_after.w.abs() < 0.1,
             "After 90° rotation, W component should be ~0, got {}", ana_after.w);
-        assert!(ana_after.x.abs() > 0.9,
-            "After 90° rotation, X component should be ~±1, got {}", ana_after.x);
+        assert!(ana_after.z.abs() > 0.9,
+            "After 90° rotation, Z component should be ~±1, got {}", ana_after.z);
+
+        // And forward (-Z) should now look into the 4th dimension
+        let fwd = cam.forward();
+        assert!(fwd.w.abs() > 0.9,
+            "After 90° ZW rotation, forward should point along W, got {:?}", fwd);
 
         // Y should never be affected by rotate_w (that's the point of SkipY)
         assert!(ana_after.y.abs() < 0.1,
@@ -563,17 +576,17 @@ mod tests {
         eprintln!("After 90° rotation: ana=({:.2},{:.2},{:.2},{:.2}) projected=({:.2},{:.2},{:.2},{:.2})",
             ana.x, ana.y, ana.z, ana.w, ana_xzw.x, ana_xzw.y, ana_xzw.z, ana_xzw.w);
 
-        // W movement should now go in +X or -X direction
+        // W movement should now go in +Z or -Z direction (ZW rotation)
         assert!(ana_xzw.w.abs() < 0.1, "After 90° rotation, W movement should NOT go in W direction");
-        assert!(ana_xzw.x.abs() > 0.9, "After 90° rotation, W movement should go in X direction");
+        assert!(ana_xzw.z.abs() > 0.9, "After 90° rotation, W movement should go in Z direction");
 
-        // Verify: pressing Q after rotation affects X, not W
+        // Verify: pressing Q after rotation affects Z, not W
         let w_input = 1.0;
         let move_from_w = ana_xzw * w_input;
         eprintln!("Movement from Q key: ({:.2},{:.2},{:.2},{:.2})",
             move_from_w.x, move_from_w.y, move_from_w.z, move_from_w.w);
 
-        assert!(move_from_w.x.abs() > 0.9, "Q key should affect X position after rotation");
+        assert!(move_from_w.z.abs() > 0.9, "Q key should affect Z position after rotation");
         assert!(move_from_w.w.abs() < 0.1, "Q key should NOT affect W position after rotation");
     }
 

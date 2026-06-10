@@ -604,6 +604,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)] // pairwise (i, j) column checks
     fn test_rotation_matrix_is_orthogonal() {
         // An orthogonal matrix has M * M^T = I
         let r = Rotor4::from_plane_angle(RotationPlane::XZ, 0.7)

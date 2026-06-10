@@ -266,7 +266,7 @@ impl AudioEngine4D {
     /// Set the volume of a specific bus
     pub fn set_bus_volume(&mut self, bus: AudioBus, volume: f32) {
         if let Some(track) = self.bus_tracks.get_mut(&bus) {
-            let _ = track.set_volume(Volume::Amplitude(volume.clamp(0.0, 1.0) as f64), Tween::default());
+            track.set_volume(Volume::Amplitude(volume.clamp(0.0, 1.0) as f64), Tween::default());
             log::debug!("Set {:?} bus volume to {:.2}", bus, volume);
         }
     }

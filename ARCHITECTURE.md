@@ -25,12 +25,18 @@ Note: `rust4d_render` depends on `rust4d_input` for the `CameraControl` trait. T
 
 | Crate | Purpose |
 |-------|---------|
-| **rust4d_math** | 4D vector (`Vec4`) and matrix math. No dependencies on other crates. |
-| **rust4d_core** | Core types: `World`, `Entity`, `Transform4D`, shapes (`Tesseract4D`, `Hyperplane4D`). Depends on math and physics. |
-| **rust4d_render** | GPU rendering: `RenderContext`, `SlicePipeline`, `RenderPipeline`, `Camera4D`. Uses wgpu for GPU access. |
-| **rust4d_physics** | 4D physics simulation: `PhysicsWorld`, `RigidBody4D`, collision detection. |
+| **rust4d_math** | 4D vector (`Vec4`), rotor (`Rotor4`), matrix math, shapes, rays. No dependencies on other crates. |
+| **rust4d_core** | ECS world (hecs), scenes (RON), `Transform4D`, asset cache. Depends on math and physics. |
+| **rust4d_render** | GPU rendering: `RenderContext`, `SlicePipeline`, `RenderPipeline`, `Camera4D`, particles, sprites, egui HUD. Uses wgpu. |
+| **rust4d_physics** | 4D physics: `PhysicsWorld`, `RigidBody4D`, static colliders, raycasts, triggers, collision events. |
 | **rust4d_input** | Input handling: `CameraController` for FPS-style 4D navigation. |
-| **rust4d** | Main application that ties everything together. |
+| **rust4d_game** | Game layer: `CharacterController4D`, events, FSM, tweens, scene helpers. |
+| **rust4d_scripting** | Sandboxed Lua 5.4 runtime (mlua) with lifecycle callbacks and hot reload. |
+| **rust4d_audio** | 4D spatial audio on kira with bus routing. |
+| **rust4d** | Application crate: window/render/simulation systems (exposed as a library for tests and headless harnesses) + winit binary. |
+
+For the mathematical foundations (rotations, slicing, conventions) see
+[docs/4d-math.md](./docs/4d-math.md).
 
 ## Data Flow
 

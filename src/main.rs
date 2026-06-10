@@ -2,9 +2,7 @@
 //!
 //! A 4D rendering engine that displays 3D cross-sections of 4D geometry.
 
-mod config;
-mod input;
-mod systems;
+
 
 use winit::{
     application::ApplicationHandler,
@@ -14,19 +12,16 @@ use winit::{
     window::WindowId,
 };
 
-use input::{InputMapper, InputAction};
-use systems::{RenderError, RenderSystem, SimulationSystem, WindowSystem};
+use rust4d::input::{InputMapper, InputAction};
+use rust4d::systems::{build_geometry, RenderError, RenderSystem, SimulationSystem, WindowSystem};
 
-use rust4d_core::{World, SceneManager, Transform4D, ShapeRef, Material, Tags};
+use rust4d_core::SceneManager;
 use rust4d_game::{CharacterController4D, CharacterConfig, scene_helpers};
-use rust4d_render::{
-    camera4d::Camera4D,
-    RenderableGeometry, CheckerboardGeometry, position_gradient_color,
-};
+use rust4d_render::{camera4d::Camera4D, RenderableGeometry};
 use rust4d_input::CameraController;
 use rust4d_math::Vec4;
 
-use config::AppConfig;
+use rust4d::config::AppConfig;
 
 /// Main application state
 struct App {
@@ -101,7 +96,7 @@ impl App {
             ));
 
         // Build GPU geometry from the world
-        let geometry = Self::build_geometry(scene_manager.active_world().unwrap());
+        let geometry = build_geometry(scene_manager.active_world().unwrap());
 
         log::info!("Loaded scene '{}' with {} entities",
             scene_name,
@@ -145,37 +140,6 @@ impl App {
             character,
             simulation: SimulationSystem::new(),
         }
-    }
-
-    /// Build GPU geometry from the world using custom coloring
-    fn build_geometry(world: &World) -> RenderableGeometry {
-        let mut geometry = RenderableGeometry::new();
-
-        // Checkerboard pattern for the floor
-        let checkerboard = CheckerboardGeometry::new(
-            [0.3, 0.3, 0.35, 1.0], // Dark gray
-            [0.7, 0.7, 0.75, 1.0], // Light gray
-            2.0, // Cell size
-        );
-
-        // Query all renderable entities (Transform4D + ShapeRef + Material)
-        // Optionally check Tags for coloring strategy
-        for (_entity, (transform, shape, material, tags)) in
-            world.ecs().query::<(&Transform4D, &ShapeRef, &Material, Option<&Tags>)>().iter()
-        {
-            let is_dynamic = tags.map(|t| t.has("dynamic")).unwrap_or(false);
-            if is_dynamic {
-                // Dynamic entities (tesseract): use position gradient
-                geometry.add_components_with_color(transform, shape.as_shape(), material, &position_gradient_color);
-            } else {
-                // Static entities (floor): use checkerboard pattern
-                geometry.add_components_with_color(transform, shape.as_shape(), material, &|v, _m| {
-                    checkerboard.color_for_position(v.x, v.z)
-                });
-            }
-        }
-
-        geometry
     }
 
 }
@@ -295,7 +259,7 @@ impl ApplicationHandler for App {
 
                 // Rebuild geometry if entities changed
                 if result.geometry_dirty {
-                    self.geometry = Self::build_geometry(self.scene_manager.active_world().unwrap());
+                    self.geometry = build_geometry(self.scene_manager.active_world().unwrap());
                     if let Some(rs) = &mut self.render_system {
                         rs.upload_geometry(&self.geometry);
                     }

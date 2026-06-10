@@ -78,14 +78,26 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed diagrams and data flow.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/rust4d
-cd rust4d
+git clone https://github.com/Lemon9247/Rust4D
+cd Rust4D
 
 # Run the main application
 cargo run --release
 
 # Or try an example
 cargo run --example 01_hello_tesseract
+```
+
+On NixOS (or with Nix installed), use the dev shell — it provides the Rust
+toolchain, Vulkan wiring, and the imaging tools used for visual verification:
+
+```bash
+nix develop
+cargo test --workspace
+
+# Headless rendering verification: captures protocol frames as PPM images
+# plus numeric slice-plane logs, without opening a window
+cargo run --example headless_protocol .scratchpad/captures
 ```
 
 ### Quick Start with Examples
@@ -173,6 +185,16 @@ See [examples/README.md](examples/README.md) for the full example index and lear
 | 02_multiple_shapes | Multiple objects with transforms |
 | 03_physics_demo | Physics with gravity and collision |
 | 04_camera_exploration | Full camera controls |
+
+## Documentation
+
+| Guide | Audience |
+|-------|----------|
+| [Getting Started](docs/getting-started.md) — installation, first steps, 4D concepts | New users |
+| [User Guide](docs/user-guide.md) — full feature reference | All users |
+| [Developer Guide](docs/developer-guide.md) — architecture, algorithms, testing, contributing | Contributors |
+| [The Mathematics of Rust4D](docs/4d-math.md) — rotors, SkipY, slicing, the slice invariant, conventions | Contributors |
+| [ARCHITECTURE.md](ARCHITECTURE.md) — crate structure and data flow | Contributors |
 
 ## Inspiration
 

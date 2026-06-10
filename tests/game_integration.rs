@@ -58,7 +58,7 @@ fn test_character_controller_with_active_scene() {
     // Step physics to let player fall and settle
     for _ in 0..100 {
         if let Some(physics) = active.world.physics_mut() {
-            controller.apply_movement(physics, Vec4::ZERO);
+            controller.apply_movement(physics, Vec4::ZERO, Vec4::ZERO);
         }
         active.update(1.0 / 60.0);
     }
@@ -74,7 +74,7 @@ fn test_character_controller_with_active_scene() {
 
     // Apply movement in X direction
     if let Some(physics) = active.world.physics_mut() {
-        controller.apply_movement(physics, Vec4::new(1.0, 0.0, 0.0, 0.0));
+        controller.apply_movement(physics, Vec4::new(1.0, 0.0, 0.0, 0.0), Vec4::ZERO);
     }
     active.update(1.0 / 60.0);
 

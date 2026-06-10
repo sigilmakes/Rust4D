@@ -57,7 +57,7 @@ impl SimulationSystem {
         character: Option<&CharacterController4D>,
         cursor_captured: bool,
     ) -> SimulationResult {
-        // 1. Calculate delta time
+        // Calculate delta time
         let now = Instant::now();
         let raw_dt = (now - self.last_frame).as_secs_f32();
         // Cap dt to prevent spiral of death on first frame or after window focus
@@ -65,11 +65,47 @@ impl SimulationSystem {
         let dt = raw_dt.min(0.25);
         self.last_frame = now;
 
+        self.update_with_dt(dt, scene_manager, camera, controller, character, cursor_captured)
+    }
+
+    /// Run one simulation frame with an explicit delta time.
+    ///
+    /// This is the deterministic core of [`update`](Self::update); tests and
+    /// headless harnesses call it directly with a fixed timestep.
+    pub fn update_with_dt(
+        &mut self,
+        dt: f32,
+        scene_manager: &mut SceneManager,
+        camera: &mut Camera4D,
+        controller: &mut CameraController,
+        character: Option<&CharacterController4D>,
+        cursor_captured: bool,
+    ) -> SimulationResult {
         // 2. Get movement input from controller
         let (forward_input, right_input) = controller.get_movement_input();
         let w_input = controller.get_w_input();
 
+        // Guard against NaN/infinity from broken input state
+        let forward_input = if forward_input.is_finite() { forward_input } else { 0.0 };
+        let right_input = if right_input.is_finite() { right_input } else { 0.0 };
+        let w_input = if w_input.is_finite() { w_input } else { 0.0 };
+
         // 3. Calculate movement direction in world space using camera orientation
+        //
+        // INVARIANT (see tests/slice_invariant.rs): WASD movement must stay
+        // inside the player's current 3D slice — its world-space direction
+        // must remain orthogonal to the camera's ana axis. Otherwise the
+        // camera drifts across the slice plane and every cross-section on
+        // screen morphs. Two things guarantee the invariant here:
+        //
+        //   1. forward/right are projected to the horizontal XZW hyperplane
+        //      (Y zeroed). They remain orthogonal to ana because ana never has
+        //      a Y component (SkipY construction) and rotation preserves
+        //      orthogonality.
+        //   2. Slice movement (WASD) and ana movement (Q/E) are passed to the
+        //      character controller SEPARATELY, so each is speed-scaled
+        //      uniformly. Scaling world axes anisotropically would tilt the
+        //      direction across the slice plane.
         let camera_forward = camera.forward();
         let camera_right = camera.right();
         let camera_ana = camera.ana();
@@ -81,22 +117,26 @@ impl SimulationSystem {
             Vec4::new(camera_right.x, 0.0, camera_right.z, camera_right.w).normalized();
         let ana_xzw = Vec4::new(camera_ana.x, 0.0, camera_ana.z, camera_ana.w).normalized();
 
-        // Combine movement direction and normalize to prevent faster diagonal movement
-        // Without this, 2-axis movement is ~41% faster and 3-axis is ~73% faster
-        let move_dir = forward_xzw * forward_input + right_xzw * right_input + ana_xzw * w_input;
-        let move_dir = if move_dir.length_squared() > 1.0 {
-            move_dir.normalized()
+        // Combine WASD slice movement; clamp to unit length to prevent faster
+        // diagonal movement (otherwise 2-axis movement is ~41% faster)
+        let slice_dir = forward_xzw * forward_input + right_xzw * right_input;
+        let slice_dir = if slice_dir.length_squared() > 1.0 {
+            slice_dir.normalized()
         } else {
-            move_dir
+            slice_dir
         };
 
+        // Q/E deliberately moves along the camera's ana axis (this is the one
+        // movement that is SUPPOSED to change the visible slice)
+        let ana_dir = ana_xzw * w_input;
+
         // 4. Apply movement to player via character controller
-        // The controller owns move_speed, so we just pass the normalized direction
+        // The controller owns the speeds and scales each component uniformly
         if let (Some(character), Some(physics)) = (character, scene_manager
             .active_world_mut()
             .and_then(|w| w.physics_mut()))
         {
-            character.apply_movement(physics, move_dir);
+            character.apply_movement(physics, slice_dir, ana_dir);
         }
 
         // 5. Handle jump via character controller

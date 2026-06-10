@@ -52,6 +52,7 @@ struct App {
     render_context: Option<RenderContext>,
     slice_pipeline: Option<SlicePipeline>,
     render_pipeline: Option<RenderPipeline>,
+    #[allow(dead_code)] // keeps ECS world alive alongside its derived GPU geometry
     world: World,
     geometry: RenderableGeometry,
     camera: Camera4D,
@@ -328,8 +329,6 @@ impl ApplicationHandler for App {
                         tetrahedron_count: self.geometry.tetrahedron_count() as u32,
                         _padding: [0.0; 2],
                         camera_matrix: self.camera.rotation_matrix(),
-                        camera_eye: [pos.x, pos.y, pos.z],
-                        _padding2: 0.0,
                         camera_position: [pos.x, pos.y, pos.z, pos.w],
                     };
                     sp.update_params(&ctx.queue, &slice_params);

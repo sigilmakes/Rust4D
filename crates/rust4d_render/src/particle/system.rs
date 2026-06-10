@@ -127,11 +127,9 @@ impl ParticleSystem {
     /// Update all particles and emitters
     pub fn update(&mut self, dt: f32) {
         // Update all emitters and collect new particles
-        for emitter_opt in &mut self.emitters {
-            if let Some(emitter) = emitter_opt {
-                let new_particles = emitter.update(dt);
-                self.particles.extend(new_particles);
-            }
+        for emitter in self.emitters.iter_mut().flatten() {
+            let new_particles = emitter.update(dt);
+            self.particles.extend(new_particles);
         }
 
         // Remove dead emitters and free their slots

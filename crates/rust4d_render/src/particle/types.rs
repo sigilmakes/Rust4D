@@ -35,6 +35,7 @@ pub struct Particle {
 
 impl Particle {
     /// Create a new particle with the given parameters
+    #[allow(clippy::too_many_arguments)] // construction site is the emitter; a builder adds no clarity
     pub fn new(
         position: Vec4,
         velocity: Vec4,
@@ -77,10 +78,10 @@ impl Particle {
 
         // Apply drag
         let drag_factor = (1.0 - self.drag * dt).max(0.0);
-        self.velocity = self.velocity * drag_factor;
+        self.velocity *= drag_factor;
 
         // Apply velocity to position
-        self.position = self.position + self.velocity * dt;
+        self.position += self.velocity * dt;
 
         // Interpolate size and color based on lifetime ratio
         let life_ratio = self.lifetime / self.max_lifetime;
@@ -148,7 +149,7 @@ impl BurstConfig {
     /// Get the effective particle lifetime, clamped to the minimum allowed value.
     ///
     /// This ensures particles don't die instantly, which would waste CPU cycles.
-    /// Returns at least [`MIN_PARTICLE_LIFETIME`].
+    /// Returns at least `MIN_PARTICLE_LIFETIME` (0.01s).
     #[inline]
     pub fn effective_lifetime(&self) -> f32 {
         self.lifetime.max(MIN_PARTICLE_LIFETIME)
