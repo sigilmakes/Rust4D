@@ -56,9 +56,9 @@
 
           shellHook = ''
             echo "Rust4D dev shell — $(rustc --version)"
-            # Prefer the system Vulkan ICDs (Intel + lavapipe) when present
-            if [ -d /run/opengl-driver/share/vulkan/icd.d ]; then
-              export VK_ICD_FILENAMES=''${VK_ICD_FILENAMES:-}
+            # Use the system Vulkan ICDs (NixOS exposes them via /run/opengl-driver)
+            if [ -d /run/opengl-driver/share/vulkan/icd.d ] && [ -z "''${VK_DRIVER_FILES:-}" ]; then
+              export VK_DRIVER_FILES=$(ls /run/opengl-driver/share/vulkan/icd.d/*.json | tr '\n' ':' | sed 's/:$//')
             fi
           '';
         };
