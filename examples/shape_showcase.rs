@@ -177,6 +177,7 @@ impl HeadlessGpu {
                 diffuse_strength: 0.75,
                 w_color_strength: 0.25,
                 w_range: 2.5,
+                ..RenderUniforms::default()
             },
         );
 

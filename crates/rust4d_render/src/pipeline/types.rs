@@ -127,8 +127,36 @@ impl Default for SliceParams {
     }
 }
 
-/// Render uniforms for the 3D rendering pass
-/// Layout: 160 bytes total (must match render.wgsl RenderUniforms)
+/// A point light for the 3D cross-section render pass.
+///
+/// Layout: 32 bytes, matching WGSL `PointLight`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct PointLightUniform {
+    /// XYZ position in camera/world 3-space plus attenuation radius.
+    pub position_radius: [f32; 4],
+    /// RGB color plus scalar intensity.
+    pub color_intensity: [f32; 4],
+}
+
+impl PointLightUniform {
+    /// Construct a point light from position, radius, color, and intensity.
+    pub fn new(position: [f32; 3], radius: f32, color: [f32; 3], intensity: f32) -> Self {
+        Self {
+            position_radius: [position[0], position[1], position[2], radius],
+            color_intensity: [color[0], color[1], color[2], intensity],
+        }
+    }
+}
+
+impl Default for PointLightUniform {
+    fn default() -> Self {
+        Self::new([0.0, 2.0, 2.0], 8.0, [1.0, 1.0, 1.0], 0.0)
+    }
+}
+
+/// Render uniforms for the 3D rendering pass.
+/// Layout: 336 bytes total (must match render.wgsl RenderUniforms).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct RenderUniforms {
@@ -136,14 +164,27 @@ pub struct RenderUniforms {
     pub view_matrix: [[f32; 4]; 4],
     /// Projection matrix (64 bytes)
     pub projection_matrix: [[f32; 4]; 4],
-    /// Light direction (normalized) + padding (16 bytes)
+    /// Directional light direction (normalized) + padding (16 bytes)
     pub light_dir: [f32; 3],
     pub _padding: f32,
+    /// Camera position for specular highlights (16 bytes)
+    pub camera_pos: [f32; 3],
+    pub _padding_camera: f32,
     /// Lighting parameters (16 bytes)
     pub ambient_strength: f32,
     pub diffuse_strength: f32,
+    pub specular_strength: f32,
+    pub specular_power: f32,
+    /// W-color and fog parameters (16 bytes)
     pub w_color_strength: f32,
     pub w_range: f32,
+    pub fog_density: f32,
+    pub point_light_count: f32,
+    /// Fog color (16 bytes)
+    pub fog_color: [f32; 3],
+    pub _padding_fog: f32,
+    /// Up to four point lights (128 bytes)
+    pub point_lights: [PointLightUniform; 4],
 }
 
 impl Default for RenderUniforms {
@@ -163,10 +204,24 @@ impl Default for RenderUniforms {
             ],
             light_dir: [0.5, 1.0, 0.3],
             _padding: 0.0,
-            ambient_strength: 0.3,
-            diffuse_strength: 0.7,
+            camera_pos: [0.0, 0.0, 0.0],
+            _padding_camera: 0.0,
+            ambient_strength: 0.28,
+            diffuse_strength: 0.72,
+            specular_strength: 0.35,
+            specular_power: 48.0,
             w_color_strength: 0.5,
             w_range: 2.0,
+            fog_density: 0.018,
+            point_light_count: 1.0,
+            fog_color: [0.035, 0.035, 0.055],
+            _padding_fog: 0.0,
+            point_lights: [
+                PointLightUniform::new([2.5, 3.0, 4.0], 10.0, [1.0, 0.86, 0.65], 0.65),
+                PointLightUniform::default(),
+                PointLightUniform::default(),
+                PointLightUniform::default(),
+            ],
         }
     }
 }
@@ -216,10 +271,17 @@ mod tests {
     }
 
     #[test]
+    fn test_point_light_uniform_size() {
+        // position+radius vec4 + color+intensity vec4 = 8 floats = 32 bytes
+        assert_eq!(size_of::<PointLightUniform>(), 32);
+    }
+
+    #[test]
     fn test_render_uniforms_size() {
-        // 16 floats view_matrix + 16 floats projection_matrix + 3 floats light_dir + 1 padding
-        // + 4 floats (ambient, diffuse, w_color, w_range) = 40 floats = 160 bytes
-        assert_eq!(size_of::<RenderUniforms>(), 160);
+        // 16 floats view + 16 projection + 4 directional-light slot +
+        // 4 camera slot + 4 lighting params + 4 w/fog params + 4 fog slot +
+        // 4 point lights × 8 floats = 84 floats = 336 bytes
+        assert_eq!(size_of::<RenderUniforms>(), 336);
     }
 
     #[test]
@@ -228,6 +290,7 @@ mod tests {
         assert_eq!(std::mem::align_of::<Vertex4D>(), 4);
         assert_eq!(std::mem::align_of::<Vertex3D>(), 4);
         assert_eq!(std::mem::align_of::<SliceParams>(), 4);
+        assert_eq!(std::mem::align_of::<PointLightUniform>(), 4);
         assert_eq!(std::mem::align_of::<RenderUniforms>(), 4);
     }
 }

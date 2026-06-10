@@ -507,6 +507,7 @@ impl ApplicationHandler for PreviewApp {
                         diffuse_strength: 0.7,
                         w_color_strength: 0.5,
                         w_range: 2.0,
+                        ..RenderUniforms::default()
                     };
                     rp.update_uniforms(&ctx.queue, &render_uniforms);
 

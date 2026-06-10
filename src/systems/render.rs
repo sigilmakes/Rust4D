@@ -149,6 +149,7 @@ impl RenderSystem {
             diffuse_strength: self.render_config.diffuse_strength,
             w_color_strength: self.render_config.w_color_strength,
             w_range: self.render_config.w_range,
+            ..RenderUniforms::default()
         };
         self.render_pipeline
             .update_uniforms(&self.context.queue, &render_uniforms);
