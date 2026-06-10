@@ -1,9 +1,9 @@
 //! Particle emitter for continuous particle emission
 
-use rand::{Rng, SeedableRng};
+use super::types::{BurstConfig, EmitterConfig, Particle};
 use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use rust4d_math::Vec4;
-use super::types::{Particle, EmitterConfig, BurstConfig};
 
 /// A continuous particle emitter
 #[derive(Clone, Debug)]
@@ -74,7 +74,8 @@ impl ParticleEmitter {
         self.accumulator -= particles_to_spawn as f32;
 
         // Spawn the particles
-        let mut particles = Vec::with_capacity((particles_to_spawn * self.config.burst.count) as usize);
+        let mut particles =
+            Vec::with_capacity((particles_to_spawn * self.config.burst.count) as usize);
         for _ in 0..particles_to_spawn {
             particles.extend(self.spawn_burst_internal(&self.config.burst.clone()));
         }
@@ -214,7 +215,7 @@ pub fn spawn_burst(position: Vec4, config: &BurstConfig, seed: u64) -> Vec<Parti
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_emitter_creation() {
         let config = EmitterConfig::default();

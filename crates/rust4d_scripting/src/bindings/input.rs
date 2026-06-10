@@ -55,36 +55,134 @@ static INPUT_WARNED: AtomicBool = AtomicBool::new(false);
 /// These correspond to common keyboard keys that would be handled by winit/gilrs.
 const VALID_KEY_NAMES: &[&str] = &[
     // Letters
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-    "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+    "M",
+    "N",
+    "O",
+    "P",
+    "Q",
+    "R",
+    "S",
+    "T",
+    "U",
+    "V",
+    "W",
+    "X",
+    "Y",
+    "Z",
     // Numbers
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
     // Function keys
-    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+    "F1",
+    "F2",
+    "F3",
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8",
+    "F9",
+    "F10",
+    "F11",
+    "F12",
     // Modifiers
-    "Shift", "LShift", "RShift",
-    "Control", "LControl", "RControl", "Ctrl", "LCtrl", "RCtrl",
-    "Alt", "LAlt", "RAlt",
-    "Super", "LSuper", "RSuper", "Win", "LWin", "RWin",
+    "Shift",
+    "LShift",
+    "RShift",
+    "Control",
+    "LControl",
+    "RControl",
+    "Ctrl",
+    "LCtrl",
+    "RCtrl",
+    "Alt",
+    "LAlt",
+    "RAlt",
+    "Super",
+    "LSuper",
+    "RSuper",
+    "Win",
+    "LWin",
+    "RWin",
     // Special keys
-    "Space", "Enter", "Return", "Escape", "Esc",
-    "Tab", "Backspace", "Delete", "Insert",
-    "Home", "End", "PageUp", "PageDown",
-    "Up", "Down", "Left", "Right",
+    "Space",
+    "Enter",
+    "Return",
+    "Escape",
+    "Esc",
+    "Tab",
+    "Backspace",
+    "Delete",
+    "Insert",
+    "Home",
+    "End",
+    "PageUp",
+    "PageDown",
+    "Up",
+    "Down",
+    "Left",
+    "Right",
     // Punctuation and symbols
-    "Minus", "Plus", "Equals",
-    "LeftBracket", "RightBracket", "LBracket", "RBracket",
-    "Backslash", "Semicolon", "Quote", "Apostrophe",
-    "Comma", "Period", "Slash",
-    "Grave", "Backtick", "Tilde",
+    "Minus",
+    "Plus",
+    "Equals",
+    "LeftBracket",
+    "RightBracket",
+    "LBracket",
+    "RBracket",
+    "Backslash",
+    "Semicolon",
+    "Quote",
+    "Apostrophe",
+    "Comma",
+    "Period",
+    "Slash",
+    "Grave",
+    "Backtick",
+    "Tilde",
     // Numpad
-    "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4",
-    "Numpad5", "Numpad6", "Numpad7", "Numpad8", "Numpad9",
-    "NumpadAdd", "NumpadSubtract", "NumpadMultiply", "NumpadDivide",
-    "NumpadEnter", "NumpadDecimal",
+    "Numpad0",
+    "Numpad1",
+    "Numpad2",
+    "Numpad3",
+    "Numpad4",
+    "Numpad5",
+    "Numpad6",
+    "Numpad7",
+    "Numpad8",
+    "Numpad9",
+    "NumpadAdd",
+    "NumpadSubtract",
+    "NumpadMultiply",
+    "NumpadDivide",
+    "NumpadEnter",
+    "NumpadDecimal",
     // Other
-    "CapsLock", "NumLock", "ScrollLock",
-    "PrintScreen", "Pause",
+    "CapsLock",
+    "NumLock",
+    "ScrollLock",
+    "PrintScreen",
+    "Pause",
 ];
 
 /// Validate a key name and return it normalized (uppercase for letters).
@@ -194,7 +292,10 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
             }
 
             // STUB: Return false
-            log::trace!("[input] is_key_just_pressed('{}') - stub returning false", key);
+            log::trace!(
+                "[input] is_key_just_pressed('{}') - stub returning false",
+                key
+            );
             Ok(false)
         })?,
     )?;
@@ -220,7 +321,10 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
 
             // STUB: Return false
             // Action names are user-defined, so we don't validate them
-            log::trace!("[input] is_action_pressed('{}') - stub returning false", action);
+            log::trace!(
+                "[input] is_action_pressed('{}') - stub returning false",
+                action
+            );
             Ok(false)
         })?,
     )?;
@@ -244,7 +348,10 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
             }
 
             // STUB: Return false
-            log::trace!("[input] is_action_just_pressed('{}') - stub returning false", action);
+            log::trace!(
+                "[input] is_action_just_pressed('{}') - stub returning false",
+                action
+            );
             Ok(false)
         })?,
     )?;
@@ -274,7 +381,11 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
             }
 
             // STUB: Return 0.0
-            log::trace!("[input] get_axis('{}', '{}') - stub returning 0.0", positive, negative);
+            log::trace!(
+                "[input] get_axis('{}', '{}') - stub returning 0.0",
+                positive,
+                negative
+            );
             Ok(0.0f32)
         })?,
     )?;
@@ -343,7 +454,10 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
                 );
             }
 
-            log::trace!("[input] is_mouse_button_pressed('{}') - stub returning false", button);
+            log::trace!(
+                "[input] is_mouse_button_pressed('{}') - stub returning false",
+                button
+            );
             Ok(false)
         })?,
     )?;
@@ -368,7 +482,10 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
                 );
             }
 
-            log::trace!("[input] is_mouse_button_just_pressed('{}') - stub returning false", button);
+            log::trace!(
+                "[input] is_mouse_button_just_pressed('{}') - stub returning false",
+                button
+            );
             Ok(false)
         })?,
     )?;

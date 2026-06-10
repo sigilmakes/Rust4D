@@ -68,9 +68,9 @@
 //! distance from the camera (W dimension is ignored for depth sorting since
 //! billboards are rendered at their XYZ projection).
 
-pub mod types;
 pub mod batch;
+pub mod types;
 
 // Re-export main types for convenience
-pub use types::{Sprite, SpriteSheet, WFadeConfig};
 pub use batch::SpriteBatch;
+pub use types::{Sprite, SpriteSheet, WFadeConfig};

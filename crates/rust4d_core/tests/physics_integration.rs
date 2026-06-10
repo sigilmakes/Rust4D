@@ -7,13 +7,13 @@
 //! 4. Dirty flags trigger geometry rebuild
 
 use rust4d_core::{
-    ActiveScene, Scene, World, EntityTemplate, Transform4D, Material, ShapeRef,
-    ShapeTemplate, DirtyFlags, PhysicsBody, Name,
+    ActiveScene, DirtyFlags, EntityTemplate, Material, Name, PhysicsBody, Scene, ShapeRef,
+    ShapeTemplate, Transform4D, World,
 };
+use rust4d_math::{Tesseract4D, Vec4};
 use rust4d_physics::{
-    PhysicsConfig, PhysicsWorld, RigidBody4D, BodyType, StaticCollider, PhysicsMaterial,
+    BodyType, PhysicsConfig, PhysicsMaterial, PhysicsWorld, RigidBody4D, StaticCollider,
 };
-use rust4d_math::{Vec4, Tesseract4D};
 
 // ==================== Scene Loading Tests ====================
 
@@ -30,14 +30,16 @@ fn test_scene_dynamic_entity_has_physics_body() {
             Material::WHITE,
         )
         .with_name("tesseract")
-        .with_tag("dynamic")
+        .with_tag("dynamic"),
     );
 
     // Instantiate the scene
     let active = ActiveScene::from_template(&scene, None);
 
     // Get the entity
-    let entity_handle = active.world.get_by_name("tesseract")
+    let entity_handle = active
+        .world
+        .get_by_name("tesseract")
         .expect("Tesseract entity should exist");
 
     // Verify physics body was created
@@ -50,13 +52,12 @@ fn test_scene_dynamic_entity_has_physics_body() {
     // Verify the body exists in the physics world
     let physics = active.world.physics().expect("World should have physics");
     let body_key = body_comp.unwrap().0;
-    let body = physics.get_body(body_key).expect("Physics body should exist");
+    let body = physics
+        .get_body(body_key)
+        .expect("Physics body should exist");
 
     // Verify body type is Dynamic
-    assert!(
-        !body.is_static(),
-        "Body should not be static"
-    );
+    assert!(!body.is_static(), "Body should not be static");
     assert!(
         body.affected_by_gravity(),
         "Dynamic body should be affected by gravity"
@@ -75,7 +76,7 @@ fn test_scene_static_floor_has_collider() {
             Material::GRAY,
         )
         .with_name("floor")
-        .with_tag("static")
+        .with_tag("static"),
     );
 
     let active = ActiveScene::from_template(&scene, None);
@@ -140,16 +141,15 @@ fn test_dynamic_body_lands_on_floor() {
     // Body should be near the floor (radius 0.5, floor at 0, so center at ~0.5)
     assert!(
         body.position.y < 1.0,
-        "Body should have fallen. Y={}", body.position.y
+        "Body should have fallen. Y={}",
+        body.position.y
     );
     assert!(
         body.position.y > -1.0,
-        "Body should be above floor. Y={}", body.position.y
+        "Body should be above floor. Y={}",
+        body.position.y
     );
-    assert!(
-        body.grounded,
-        "Body should be grounded after settling"
-    );
+    assert!(body.grounded, "Body should be grounded after settling");
 }
 
 /// Test bounded floor collision (the specific bug scenario)
@@ -159,17 +159,17 @@ fn test_aabb_body_lands_on_bounded_floor() {
 
     // Add a bounded floor at y=-2 (matching default.ron)
     physics.add_static_collider(StaticCollider::floor_bounded(
-        -2.0,   // y (surface level)
-        10.0,   // half_size_xz
-        5.0,    // half_size_w
-        5.0,    // thickness (minimum)
+        -2.0, // y (surface level)
+        10.0, // half_size_xz
+        5.0,  // half_size_w
+        5.0,  // thickness (minimum)
         PhysicsMaterial::CONCRETE,
     ));
 
     // Add an AABB body at y=0 with half_extent=1 (matching tesseract in default.ron)
     let body = RigidBody4D::new_aabb(
-        Vec4::new(0.0, 0.0, 0.0, 0.0),  // position
-        Vec4::new(1.0, 1.0, 1.0, 1.0),  // half_extents
+        Vec4::new(0.0, 0.0, 0.0, 0.0), // position
+        Vec4::new(1.0, 1.0, 1.0, 1.0), // half_extents
     )
     .with_body_type(BodyType::Dynamic)
     .with_mass(10.0)
@@ -190,18 +190,22 @@ fn test_aabb_body_lands_on_bounded_floor() {
     // Body should have fallen from y=0
     assert!(
         body.position.y < initial_y,
-        "Body should have fallen. Initial: {}, Final: {}", initial_y, body.position.y
+        "Body should have fallen. Initial: {}, Final: {}",
+        initial_y,
+        body.position.y
     );
 
     // Body center should be at approximately y=-1 (bottom at y=-2, floor surface at y=-2)
     // With half_extent.y=1, center at y=-1 means bottom is at y=-2 (floor surface)
     assert!(
         body.position.y > -2.0,
-        "Body should be above floor. Y={}", body.position.y
+        "Body should be above floor. Y={}",
+        body.position.y
     );
     assert!(
         body.position.y < 0.0,
-        "Body should be below starting position. Y={}", body.position.y
+        "Body should be below starting position. Y={}",
+        body.position.y
     );
 
     // Body should be grounded
@@ -245,7 +249,8 @@ fn test_entity_transform_syncs_from_physics() {
     let transform = world.ecs().get::<&Transform4D>(entity_handle).unwrap();
     assert!(
         transform.position.y < 10.0,
-        "Entity should have moved. Y={}", transform.position.y
+        "Entity should have moved. Y={}",
+        transform.position.y
     );
 
     // Entity should be marked dirty
@@ -273,7 +278,7 @@ fn test_scene_dynamic_entity_falls_to_floor() {
             Material::GRAY,
         )
         .with_name("floor")
-        .with_tag("static")
+        .with_tag("static"),
     );
 
     // Add tesseract at y=0
@@ -284,7 +289,7 @@ fn test_scene_dynamic_entity_falls_to_floor() {
             Material::WHITE,
         )
         .with_name("tesseract")
-        .with_tag("dynamic")
+        .with_tag("dynamic"),
     );
 
     // Instantiate scene
@@ -292,7 +297,13 @@ fn test_scene_dynamic_entity_falls_to_floor() {
 
     // Get initial tesseract position
     let entity_handle = active.world.get_by_name("tesseract").unwrap();
-    let initial_y = active.world.ecs().get::<&Transform4D>(entity_handle).unwrap().position.y;
+    let initial_y = active
+        .world
+        .ecs()
+        .get::<&Transform4D>(entity_handle)
+        .unwrap()
+        .position
+        .y;
 
     // Simulate 2 seconds (120 frames at 60fps)
     for _ in 0..120 {
@@ -301,32 +312,43 @@ fn test_scene_dynamic_entity_falls_to_floor() {
 
     // Get final position
     let entity_handle = active.world.get_by_name("tesseract").unwrap();
-    let final_y = active.world.ecs().get::<&Transform4D>(entity_handle).unwrap().position.y;
+    let final_y = active
+        .world
+        .ecs()
+        .get::<&Transform4D>(entity_handle)
+        .unwrap()
+        .position
+        .y;
 
     // Tesseract should have fallen
     assert!(
         final_y < initial_y,
-        "Tesseract should have fallen. Initial: {}, Final: {}", initial_y, final_y
+        "Tesseract should have fallen. Initial: {}, Final: {}",
+        initial_y,
+        final_y
     );
 
     // Tesseract should be near the floor (center at ~-1, bottom at -2)
     assert!(
         final_y > -2.0,
-        "Tesseract should be above floor surface. Y={}", final_y
+        "Tesseract should be above floor surface. Y={}",
+        final_y
     );
     assert!(
         final_y < 0.0,
-        "Tesseract should be below starting position. Y={}", final_y
+        "Tesseract should be below starting position. Y={}",
+        final_y
     );
 
     // Verify physics body is grounded
     let physics = active.world.physics().unwrap();
-    let body_comp = active.world.ecs().get::<&PhysicsBody>(entity_handle).unwrap();
+    let body_comp = active
+        .world
+        .ecs()
+        .get::<&PhysicsBody>(entity_handle)
+        .unwrap();
     let body = physics.get_body(body_comp.0).unwrap();
-    assert!(
-        body.grounded,
-        "Tesseract physics body should be grounded"
-    );
+    assert!(body.grounded, "Tesseract physics body should be grounded");
 }
 
 /// Test with actual scene file (requires scenes/default.ron to exist)
@@ -343,15 +365,27 @@ fn test_load_default_scene_file() {
     let mut active = ActiveScene::from_template(&scene, None);
 
     // Verify tesseract entity exists and has physics body
-    let entity_handle = active.world.get_by_name("tesseract")
+    let entity_handle = active
+        .world
+        .get_by_name("tesseract")
         .expect("Tesseract entity should exist in default scene");
 
     assert!(
-        active.world.ecs().get::<&PhysicsBody>(entity_handle).is_ok(),
+        active
+            .world
+            .ecs()
+            .get::<&PhysicsBody>(entity_handle)
+            .is_ok(),
         "Tesseract should have physics body"
     );
 
-    let initial_y = active.world.ecs().get::<&Transform4D>(entity_handle).unwrap().position.y;
+    let initial_y = active
+        .world
+        .ecs()
+        .get::<&Transform4D>(entity_handle)
+        .unwrap()
+        .position
+        .y;
 
     // Simulate 2 seconds
     for _ in 0..120 {
@@ -360,12 +394,20 @@ fn test_load_default_scene_file() {
 
     // Get final position
     let entity_handle = active.world.get_by_name("tesseract").unwrap();
-    let final_y = active.world.ecs().get::<&Transform4D>(entity_handle).unwrap().position.y;
+    let final_y = active
+        .world
+        .ecs()
+        .get::<&Transform4D>(entity_handle)
+        .unwrap()
+        .position
+        .y;
 
     // Tesseract should have fallen
     assert!(
         final_y < initial_y,
-        "Tesseract should have fallen from {} to near floor. Final: {}", initial_y, final_y
+        "Tesseract should have fallen from {} to near floor. Final: {}",
+        initial_y,
+        final_y
     );
 }
 
@@ -378,7 +420,11 @@ fn test_kinematic_body_falls_off_w_edge() {
 
     // Add bounded floor: W extends from -5 to +5
     physics.add_static_collider(StaticCollider::floor_bounded(
-        -2.0, 10.0, 5.0, 5.0, PhysicsMaterial::CONCRETE,
+        -2.0,
+        10.0,
+        5.0,
+        5.0,
+        PhysicsMaterial::CONCRETE,
     ));
 
     // Add kinematic sphere at center, resting on floor, with gravity enabled
@@ -393,7 +439,10 @@ fn test_kinematic_body_falls_off_w_edge() {
     }
 
     // Body should be grounded
-    assert!(physics.body_is_grounded(key), "Body should be grounded at center");
+    assert!(
+        physics.body_is_grounded(key),
+        "Body should be grounded at center"
+    );
     let start_y = physics.body_position(key).unwrap().y;
 
     // Move body to W=6 (outside floor's W bounds of -5 to +5)
@@ -403,10 +452,17 @@ fn test_kinematic_body_falls_off_w_edge() {
     }
 
     let pos = physics.body_position(key).unwrap();
-    assert!(pos.w > 5.0, "Body should have moved off W edge. W={}", pos.w);
+    assert!(
+        pos.w > 5.0,
+        "Body should have moved off W edge. W={}",
+        pos.w
+    );
 
-    assert!(!physics.body_is_grounded(key),
-        "Body should NOT be grounded when off W edge. W={}", pos.w);
+    assert!(
+        !physics.body_is_grounded(key),
+        "Body should NOT be grounded when off W edge. W={}",
+        pos.w
+    );
 
     // Continue stepping - body should fall
     for _ in 0..60 {
@@ -415,8 +471,12 @@ fn test_kinematic_body_falls_off_w_edge() {
     }
 
     let final_pos = physics.body_position(key).unwrap();
-    assert!(final_pos.y < start_y,
-        "Body should fall when off W edge. Start Y={}, Final Y={}", start_y, final_pos.y);
+    assert!(
+        final_pos.y < start_y,
+        "Body should fall when off W edge. Start Y={}, Final Y={}",
+        start_y,
+        final_pos.y
+    );
 }
 
 /// Print detailed state for debugging
@@ -426,16 +486,17 @@ fn test_physics_step_trace() {
 
     // Add bounded floor at y=-2
     physics.add_static_collider(StaticCollider::floor_bounded(
-        -2.0, 10.0, 5.0, 5.0, PhysicsMaterial::CONCRETE,
+        -2.0,
+        10.0,
+        5.0,
+        5.0,
+        PhysicsMaterial::CONCRETE,
     ));
 
     // Add AABB body at y=0
-    let body = RigidBody4D::new_aabb(
-        Vec4::new(0.0, 0.0, 0.0, 0.0),
-        Vec4::new(1.0, 1.0, 1.0, 1.0),
-    )
-    .with_body_type(BodyType::Dynamic)
-    .with_mass(10.0);
+    let body = RigidBody4D::new_aabb(Vec4::new(0.0, 0.0, 0.0, 0.0), Vec4::new(1.0, 1.0, 1.0, 1.0))
+        .with_body_type(BodyType::Dynamic)
+        .with_mass(10.0);
 
     let key = physics.add_body(body);
 
@@ -453,8 +514,10 @@ fn test_physics_step_trace() {
     }
 
     let body = physics.get_body(key).unwrap();
-    println!("Final: pos.y={:.4}, vel.y={:.4}, grounded={}",
-        body.position.y, body.velocity.y, body.grounded);
+    println!(
+        "Final: pos.y={:.4}, vel.y={:.4}, grounded={}",
+        body.position.y, body.velocity.y, body.grounded
+    );
 
     // Should be falling
     assert!(body.position.y < 0.0, "Body should have fallen");
@@ -489,7 +552,8 @@ fn test_remove_entity_cleans_up_physics_body() {
         "Physics body should exist before entity removal"
     );
     assert_eq!(
-        world.physics().unwrap().body_count(), 1,
+        world.physics().unwrap().body_count(),
+        1,
         "Should have exactly 1 physics body"
     );
 
@@ -503,7 +567,8 @@ fn test_remove_entity_cleans_up_physics_body() {
         "Physics body should be removed when entity is removed"
     );
     assert_eq!(
-        world.physics().unwrap().body_count(), 0,
+        world.physics().unwrap().body_count(),
+        0,
         "Should have 0 physics bodies after entity removal"
     );
 }
@@ -547,6 +612,8 @@ fn test_remove_entity_world_without_physics() {
 
     // Remove should work fine
     let removed = world.despawn(entity_key);
-    assert!(removed, "Entity should be removed even without physics world");
+    assert!(
+        removed,
+        "Entity should be removed even without physics world"
+    );
 }
-

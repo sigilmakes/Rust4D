@@ -9,8 +9,8 @@
 //! This design ensures intuitive movement behavior: walking forward stays
 //! horizontal regardless of 4D rotation state.
 
-use rust4d_math::{Vec4, Rotor4, RotationPlane, mat4};
 use rust4d_input::CameraControl;
+use rust4d_math::{mat4, RotationPlane, Rotor4, Vec4};
 
 /// 4D Camera using Engine4D-style architecture
 ///
@@ -157,7 +157,8 @@ impl Camera4D {
     ///
     /// This matches Engine4D's `accel = camMatrix * accel`
     fn move_camera(&mut self, forward: f32, right: f32, up: f32, ana: f32) {
-        if forward.abs() < 0.0001 && right.abs() < 0.0001 && up.abs() < 0.0001 && ana.abs() < 0.0001 {
+        if forward.abs() < 0.0001 && right.abs() < 0.0001 && up.abs() < 0.0001 && ana.abs() < 0.0001
+        {
             return;
         }
 
@@ -318,7 +319,11 @@ mod tests {
 
         // Up should still be purely +Y (or close to it)
         let up = cam.up();
-        assert!(up.y > 0.99, "Up should still be +Y after 4D rotation, got {:?}", up);
+        assert!(
+            up.y > 0.99,
+            "Up should still be +Y after 4D rotation, got {:?}",
+            up
+        );
         assert!(up.x.abs() < EPSILON, "Up.x should be ~0, got {}", up.x);
         assert!(up.z.abs() < EPSILON, "Up.z should be ~0, got {}", up.z);
         assert!(up.w.abs() < EPSILON, "Up.w should be ~0, got {}", up.w);
@@ -335,10 +340,18 @@ mod tests {
         let fwd = cam.forward();
 
         // Up should be tilted (Y component < 1)
-        assert!(up.y < 0.95, "Up should be tilted after pitch, got up.y={}", up.y);
+        assert!(
+            up.y < 0.95,
+            "Up should be tilted after pitch, got up.y={}",
+            up.y
+        );
 
         // Forward should point up (positive Y)
-        assert!(fwd.y > 0.5, "Forward should point up after pitch, got fwd.y={}", fwd.y);
+        assert!(
+            fwd.y > 0.5,
+            "Forward should point up after pitch, got fwd.y={}",
+            fwd.y
+        );
     }
 
     #[test]
@@ -355,7 +368,11 @@ mod tests {
         println!("Forward after 90° yaw: {:?}", fwd);
 
         // Y should still be 0 (yaw doesn't affect pitch)
-        assert!(fwd.y.abs() < EPSILON, "Forward.y should be ~0 after pure yaw, got {}", fwd.y);
+        assert!(
+            fwd.y.abs() < EPSILON,
+            "Forward.y should be ~0 after pure yaw, got {}",
+            fwd.y
+        );
     }
 
     #[test]
@@ -372,8 +389,11 @@ mod tests {
         cam.move_local_xz(1.0, 0.0);
 
         // Y should be unchanged (movement stays horizontal!)
-        assert!(cam.position.y.abs() < EPSILON,
-            "Forward movement should not affect Y after 4D rotation, got Y={}", cam.position.y);
+        assert!(
+            cam.position.y.abs() < EPSILON,
+            "Forward movement should not affect Y after 4D rotation, got Y={}",
+            cam.position.y
+        );
     }
 
     #[test]
@@ -388,8 +408,11 @@ mod tests {
         cam.move_local_xz(1.0, 0.0);
 
         // Y should be positive (moving up because we're pitched up)
-        assert!(cam.position.y > 0.5,
-            "Forward movement should affect Y when pitched, got Y={}", cam.position.y);
+        assert!(
+            cam.position.y > 0.5,
+            "Forward movement should affect Y when pitched, got Y={}",
+            cam.position.y
+        );
     }
 
     #[test]
@@ -407,8 +430,16 @@ mod tests {
         let fwd = cam.forward();
         let up = cam.up();
 
-        assert!(approx_eq(fwd.z, -1.0), "Forward should be -Z after reset, got {:?}", fwd);
-        assert!(approx_eq(up.y, 1.0), "Up should be +Y after reset, got {:?}", up);
+        assert!(
+            approx_eq(fwd.z, -1.0),
+            "Forward should be -Z after reset, got {:?}",
+            fwd
+        );
+        assert!(
+            approx_eq(up.y, 1.0),
+            "Up should be +Y after reset, got {:?}",
+            up
+        );
     }
 
     #[test]
@@ -419,8 +450,11 @@ mod tests {
         cam.rotate_3d(0.0, 10.0);
 
         // Pitch should be clamped to ~89° (default pitch limit)
-        assert!(cam.pitch.abs() <= Camera4D::DEFAULT_PITCH_LIMIT + 0.001,
-            "Pitch should be clamped, got {}", cam.pitch);
+        assert!(
+            cam.pitch.abs() <= Camera4D::DEFAULT_PITCH_LIMIT + 0.001,
+            "Pitch should be clamped, got {}",
+            cam.pitch
+        );
     }
 
     #[test]
@@ -438,17 +472,39 @@ mod tests {
         let ana = cam.ana();
 
         // Check vectors are unit length
-        assert!((fwd.length() - 1.0).abs() < EPSILON, "Forward not unit: {}", fwd.length());
-        assert!((right.length() - 1.0).abs() < EPSILON, "Right not unit: {}", right.length());
-        assert!((up.length() - 1.0).abs() < EPSILON, "Up not unit: {}", up.length());
-        assert!((ana.length() - 1.0).abs() < EPSILON, "Ana not unit: {}", ana.length());
+        assert!(
+            (fwd.length() - 1.0).abs() < EPSILON,
+            "Forward not unit: {}",
+            fwd.length()
+        );
+        assert!(
+            (right.length() - 1.0).abs() < EPSILON,
+            "Right not unit: {}",
+            right.length()
+        );
+        assert!(
+            (up.length() - 1.0).abs() < EPSILON,
+            "Up not unit: {}",
+            up.length()
+        );
+        assert!(
+            (ana.length() - 1.0).abs() < EPSILON,
+            "Ana not unit: {}",
+            ana.length()
+        );
 
         // Check orthogonality
-        assert!(fwd.dot(right).abs() < EPSILON, "Fwd not orthogonal to Right");
+        assert!(
+            fwd.dot(right).abs() < EPSILON,
+            "Fwd not orthogonal to Right"
+        );
         assert!(fwd.dot(up).abs() < EPSILON, "Fwd not orthogonal to Up");
         assert!(fwd.dot(ana).abs() < EPSILON, "Fwd not orthogonal to Ana");
         assert!(right.dot(up).abs() < EPSILON, "Right not orthogonal to Up");
-        assert!(right.dot(ana).abs() < EPSILON, "Right not orthogonal to Ana");
+        assert!(
+            right.dot(ana).abs() < EPSILON,
+            "Right not orthogonal to Ana"
+        );
         assert!(up.dot(ana).abs() < EPSILON, "Up not orthogonal to Ana");
     }
 
@@ -465,7 +521,11 @@ mod tests {
 
         // Up should still be +Y (4D rotation + yaw both preserve Y)
         let up = cam.up();
-        assert!(up.y > 0.99, "Up should be +Y after 4D rotation + yaw, got {:?}", up);
+        assert!(
+            up.y > 0.99,
+            "Up should be +Y after 4D rotation + yaw, got {:?}",
+            up
+        );
     }
 
     #[test]
@@ -473,20 +533,26 @@ mod tests {
         let mut cam = Camera4D::new();
 
         // Apply multiple 4D rotations
-        cam.rotate_w(FRAC_PI_2);  // Look into W
+        cam.rotate_w(FRAC_PI_2); // Look into W
         cam.rotate_xw(FRAC_PI_4); // Tilt in XW
 
         // Y axis should still be preserved
         let up = cam.up();
-        assert!(up.y > 0.99, "Up should be +Y after combined 4D rotations, got {:?}", up);
+        assert!(
+            up.y > 0.99,
+            "Up should be +Y after combined 4D rotations, got {:?}",
+            up
+        );
 
         // But forward should be in a different direction
         let fwd = cam.forward();
         println!("Forward after combined 4D rotations: {:?}", fwd);
 
         // Forward should have W component (looking into 4D)
-        assert!(fwd.w.abs() > 0.1 || fwd.z.abs() > 0.1,
-            "Forward should be affected by 4D rotation");
+        assert!(
+            fwd.w.abs() > 0.1 || fwd.z.abs() > 0.1,
+            "Forward should be affected by 4D rotation"
+        );
     }
 
     #[test]
@@ -496,7 +562,10 @@ mod tests {
 
         // Without any rotation, W movement should go in +W
         cam.move_w(1.0);
-        assert!(cam.position.w > 0.9, "W movement should go in +W by default");
+        assert!(
+            cam.position.w > 0.9,
+            "W movement should go in +W by default"
+        );
 
         // Reset
         cam.reset();
@@ -508,8 +577,11 @@ mod tests {
 
         // W axis is now rotated, so movement goes in a different direction
         // But Y should still be unchanged
-        assert!(cam.position.y.abs() < EPSILON,
-            "W movement should not affect Y, got Y={}", cam.position.y);
+        assert!(
+            cam.position.y.abs() < EPSILON,
+            "W movement should not affect Y, got Y={}",
+            cam.position.y
+        );
     }
 
     #[test]
@@ -518,34 +590,56 @@ mod tests {
 
         // Initial ana() should point in +W direction
         let ana_before = cam.ana();
-        eprintln!("ana_before: ({:.4}, {:.4}, {:.4}, {:.4})",
-            ana_before.x, ana_before.y, ana_before.z, ana_before.w);
-        assert!(ana_before.w > 0.9,
-            "Initial ana should be ~(0,0,0,1), got W={}", ana_before.w);
-        assert!(ana_before.x.abs() < 0.1,
-            "Initial ana X should be ~0, got {}", ana_before.x);
+        eprintln!(
+            "ana_before: ({:.4}, {:.4}, {:.4}, {:.4})",
+            ana_before.x, ana_before.y, ana_before.z, ana_before.w
+        );
+        assert!(
+            ana_before.w > 0.9,
+            "Initial ana should be ~(0,0,0,1), got W={}",
+            ana_before.w
+        );
+        assert!(
+            ana_before.x.abs() < 0.1,
+            "Initial ana X should be ~0, got {}",
+            ana_before.x
+        );
 
         // After 90° rotation in the ZW plane (via rotate_w), ana should change
         cam.rotate_w(FRAC_PI_2);
 
         let ana_after = cam.ana();
-        eprintln!("ana_after: ({:.4}, {:.4}, {:.4}, {:.4})",
-            ana_after.x, ana_after.y, ana_after.z, ana_after.w);
+        eprintln!(
+            "ana_after: ({:.4}, {:.4}, {:.4}, {:.4})",
+            ana_after.x, ana_after.y, ana_after.z, ana_after.w
+        );
 
         // After 90° ZW rotation, the W axis should point along Z
-        assert!(ana_after.w.abs() < 0.1,
-            "After 90° rotation, W component should be ~0, got {}", ana_after.w);
-        assert!(ana_after.z.abs() > 0.9,
-            "After 90° rotation, Z component should be ~±1, got {}", ana_after.z);
+        assert!(
+            ana_after.w.abs() < 0.1,
+            "After 90° rotation, W component should be ~0, got {}",
+            ana_after.w
+        );
+        assert!(
+            ana_after.z.abs() > 0.9,
+            "After 90° rotation, Z component should be ~±1, got {}",
+            ana_after.z
+        );
 
         // And forward (-Z) should now look into the 4th dimension
         let fwd = cam.forward();
-        assert!(fwd.w.abs() > 0.9,
-            "After 90° ZW rotation, forward should point along W, got {:?}", fwd);
+        assert!(
+            fwd.w.abs() > 0.9,
+            "After 90° ZW rotation, forward should point along W, got {:?}",
+            fwd
+        );
 
         // Y should never be affected by rotate_w (that's the point of SkipY)
-        assert!(ana_after.y.abs() < 0.1,
-            "Y should never be affected by rotate_w, got {}", ana_after.y);
+        assert!(
+            ana_after.y.abs() < 0.1,
+            "Y should never be affected by rotate_w, got {}",
+            ana_after.y
+        );
     }
 
     #[test]
@@ -561,33 +655,54 @@ mod tests {
         // === Before any rotation ===
         let ana = cam.ana();
         let ana_xzw = project_ana(ana);
-        eprintln!("Before rotation: ana=({:.2},{:.2},{:.2},{:.2}) projected=({:.2},{:.2},{:.2},{:.2})",
-            ana.x, ana.y, ana.z, ana.w, ana_xzw.x, ana_xzw.y, ana_xzw.z, ana_xzw.w);
+        eprintln!(
+            "Before rotation: ana=({:.2},{:.2},{:.2},{:.2}) projected=({:.2},{:.2},{:.2},{:.2})",
+            ana.x, ana.y, ana.z, ana.w, ana_xzw.x, ana_xzw.y, ana_xzw.z, ana_xzw.w
+        );
 
         // W movement should go in +W direction
         assert!(ana_xzw.w > 0.9, "Before rotation, W movement should be +W");
-        assert!(ana_xzw.x.abs() < 0.1, "Before rotation, X component should be ~0");
+        assert!(
+            ana_xzw.x.abs() < 0.1,
+            "Before rotation, X component should be ~0"
+        );
 
         // === After 90° rotation ===
         cam.rotate_w(FRAC_PI_2);
 
         let ana = cam.ana();
         let ana_xzw = project_ana(ana);
-        eprintln!("After 90° rotation: ana=({:.2},{:.2},{:.2},{:.2}) projected=({:.2},{:.2},{:.2},{:.2})",
-            ana.x, ana.y, ana.z, ana.w, ana_xzw.x, ana_xzw.y, ana_xzw.z, ana_xzw.w);
+        eprintln!(
+            "After 90° rotation: ana=({:.2},{:.2},{:.2},{:.2}) projected=({:.2},{:.2},{:.2},{:.2})",
+            ana.x, ana.y, ana.z, ana.w, ana_xzw.x, ana_xzw.y, ana_xzw.z, ana_xzw.w
+        );
 
         // W movement should now go in +Z or -Z direction (ZW rotation)
-        assert!(ana_xzw.w.abs() < 0.1, "After 90° rotation, W movement should NOT go in W direction");
-        assert!(ana_xzw.z.abs() > 0.9, "After 90° rotation, W movement should go in Z direction");
+        assert!(
+            ana_xzw.w.abs() < 0.1,
+            "After 90° rotation, W movement should NOT go in W direction"
+        );
+        assert!(
+            ana_xzw.z.abs() > 0.9,
+            "After 90° rotation, W movement should go in Z direction"
+        );
 
         // Verify: pressing Q after rotation affects Z, not W
         let w_input = 1.0;
         let move_from_w = ana_xzw * w_input;
-        eprintln!("Movement from Q key: ({:.2},{:.2},{:.2},{:.2})",
-            move_from_w.x, move_from_w.y, move_from_w.z, move_from_w.w);
+        eprintln!(
+            "Movement from Q key: ({:.2},{:.2},{:.2},{:.2})",
+            move_from_w.x, move_from_w.y, move_from_w.z, move_from_w.w
+        );
 
-        assert!(move_from_w.z.abs() > 0.9, "Q key should affect Z position after rotation");
-        assert!(move_from_w.w.abs() < 0.1, "Q key should NOT affect W position after rotation");
+        assert!(
+            move_from_w.z.abs() > 0.9,
+            "Q key should affect Z position after rotation"
+        );
+        assert!(
+            move_from_w.w.abs() < 0.1,
+            "Q key should NOT affect W position after rotation"
+        );
     }
 
     #[test]
@@ -615,8 +730,8 @@ mod tests {
         assert!(
             (slice_w_after - slice_w_before).abs() < EPSILON,
             "slice_w changed from {} to {} during movement! This would cause morphing.",
-            slice_w_before, slice_w_after
+            slice_w_before,
+            slice_w_after
         );
     }
-
 }

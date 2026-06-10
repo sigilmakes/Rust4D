@@ -94,7 +94,10 @@ impl RenderPipeline {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                // Slice-generated triangle winding is not stable across all
+                // marching-tetrahedra cases, so shading is deliberately
+                // two-sided and culling must stay disabled.
+                cull_mode: None,
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
@@ -126,12 +129,10 @@ impl RenderPipeline {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Render Bind Group"),
             layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         });
 
         // Create indirect draw buffer
@@ -235,11 +236,13 @@ impl RenderPipeline {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Depth32Float,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
 
-            self.depth_texture = Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
+            self.depth_texture =
+                Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
             self.depth_size = (width, height);
         }
     }
@@ -254,7 +257,10 @@ impl RenderPipeline {
         vertex_buffer: &wgpu::Buffer,
         clear_color: wgpu::Color,
     ) {
-        let depth_view = self.depth_texture.as_ref().expect("Depth texture not created. Call ensure_depth_texture first.");
+        let depth_view = self
+            .depth_texture
+            .as_ref()
+            .expect("Depth texture not created. Call ensure_depth_texture first.");
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
@@ -310,11 +316,7 @@ pub fn perspective_matrix(fov_y: f32, aspect: f32, near: f32, far: f32) -> [[f32
 
 /// Helper to create a look-at view matrix
 pub fn look_at_matrix(eye: [f32; 3], target: [f32; 3], up: [f32; 3]) -> [[f32; 4]; 4] {
-    let f = normalize([
-        target[0] - eye[0],
-        target[1] - eye[1],
-        target[2] - eye[2],
-    ]);
+    let f = normalize([target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]]);
     let s = normalize(cross(f, up));
     let u = cross(s, f);
 
@@ -331,7 +333,8 @@ pub fn mat4_mul(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
     let mut result = [[0.0f32; 4]; 4];
     for i in 0..4 {
         for j in 0..4 {
-            result[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j] + a[i][3] * b[3][j];
+            result[i][j] =
+                a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j] + a[i][3] * b[3][j];
         }
     }
     result
@@ -396,8 +399,14 @@ mod tests {
         // Near plane (z = -near) must map to depth 0, far plane to depth 1.
         let d_near = project(proj, [0.0, 0.0, -near])[2];
         let d_far = project(proj, [0.0, 0.0, -far])[2];
-        assert!(d_near.abs() < 1e-5, "near plane depth should be 0, got {d_near}");
-        assert!((d_far - 1.0).abs() < 1e-5, "far plane depth should be 1, got {d_far}");
+        assert!(
+            d_near.abs() < 1e-5,
+            "near plane depth should be 0, got {d_near}"
+        );
+        assert!(
+            (d_far - 1.0).abs() < 1e-5,
+            "far plane depth should be 1, got {d_far}"
+        );
 
         // Every depth between near and far must stay inside [0, 1] — the
         // OpenGL convention put anything closer than √(near·far) below 0,

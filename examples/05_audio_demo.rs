@@ -179,6 +179,9 @@ fn main() {
     println!("  - with_min_distance(f32) -> Full volume within this range");
     println!("  - with_max_distance(f32) -> Silent beyond this range");
 
-    println!("\nCurrent listener position: {:?}", engine.listener_position());
+    println!(
+        "\nCurrent listener position: {:?}",
+        engine.listener_position()
+    );
     println!("\nAudio demo complete!");
 }

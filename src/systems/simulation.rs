@@ -6,12 +6,12 @@
 //! - Physics stepping
 //! - Camera synchronization
 
-use std::time::Instant;
 use rust4d_core::SceneManager;
 use rust4d_game::CharacterController4D;
 use rust4d_input::CameraController;
 use rust4d_math::Vec4;
 use rust4d_render::camera4d::Camera4D;
+use std::time::Instant;
 
 /// Result of a simulation update
 pub struct SimulationResult {
@@ -65,7 +65,14 @@ impl SimulationSystem {
         let dt = raw_dt.min(0.25);
         self.last_frame = now;
 
-        self.update_with_dt(dt, scene_manager, camera, controller, character, cursor_captured)
+        self.update_with_dt(
+            dt,
+            scene_manager,
+            camera,
+            controller,
+            character,
+            cursor_captured,
+        )
     }
 
     /// Run one simulation frame with an explicit delta time.
@@ -86,8 +93,16 @@ impl SimulationSystem {
         let w_input = controller.get_w_input();
 
         // Guard against NaN/infinity from broken input state
-        let forward_input = if forward_input.is_finite() { forward_input } else { 0.0 };
-        let right_input = if right_input.is_finite() { right_input } else { 0.0 };
+        let forward_input = if forward_input.is_finite() {
+            forward_input
+        } else {
+            0.0
+        };
+        let right_input = if right_input.is_finite() {
+            right_input
+        } else {
+            0.0
+        };
         let w_input = if w_input.is_finite() { w_input } else { 0.0 };
 
         // 3. Calculate movement direction in world space using camera orientation
@@ -113,8 +128,7 @@ impl SimulationSystem {
         // Project to XZW hyperplane (zero out Y for horizontal movement)
         let forward_xzw =
             Vec4::new(camera_forward.x, 0.0, camera_forward.z, camera_forward.w).normalized();
-        let right_xzw =
-            Vec4::new(camera_right.x, 0.0, camera_right.z, camera_right.w).normalized();
+        let right_xzw = Vec4::new(camera_right.x, 0.0, camera_right.z, camera_right.w).normalized();
         let ana_xzw = Vec4::new(camera_ana.x, 0.0, camera_ana.z, camera_ana.w).normalized();
 
         // Combine WASD slice movement; clamp to unit length to prevent faster
@@ -132,19 +146,23 @@ impl SimulationSystem {
 
         // 4. Apply movement to player via character controller
         // The controller owns the speeds and scales each component uniformly
-        if let (Some(character), Some(physics)) = (character, scene_manager
-            .active_world_mut()
-            .and_then(|w| w.physics_mut()))
-        {
+        if let (Some(character), Some(physics)) = (
+            character,
+            scene_manager
+                .active_world_mut()
+                .and_then(|w| w.physics_mut()),
+        ) {
             character.apply_movement(physics, slice_dir, ana_dir);
         }
 
         // 5. Handle jump via character controller
         if controller.consume_jump() {
-            if let (Some(character), Some(physics)) = (character, scene_manager
-                .active_world_mut()
-                .and_then(|w| w.physics_mut()))
-            {
+            if let (Some(character), Some(physics)) = (
+                character,
+                scene_manager
+                    .active_world_mut()
+                    .and_then(|w| w.physics_mut()),
+            ) {
                 character.jump(physics);
             }
         }
@@ -162,10 +180,10 @@ impl SimulationSystem {
         // This sets the camera to the physics-authoritative position BEFORE the
         // controller runs, so controller.update() in step 9 computes rotation
         // deltas from the correct starting position.
-        if let (Some(character), Some(physics)) = (character, scene_manager
-            .active_world()
-            .and_then(|w| w.physics()))
-        {
+        if let (Some(character), Some(physics)) = (
+            character,
+            scene_manager.active_world().and_then(|w| w.physics()),
+        ) {
             if let Some(pos) = character.position(physics) {
                 camera.position = pos;
             }
@@ -178,10 +196,10 @@ impl SimulationSystem {
         // controller.update() in step 9 applies both rotation AND movement. We want
         // the rotation (mouse look) but not the movement (physics owns position).
         // Re-syncing here overwrites any position drift the controller introduced.
-        if let (Some(character), Some(physics)) = (character, scene_manager
-            .active_world()
-            .and_then(|w| w.physics()))
-        {
+        if let (Some(character), Some(physics)) = (
+            character,
+            scene_manager.active_world().and_then(|w| w.physics()),
+        ) {
             if let Some(pos) = character.position(physics) {
                 camera.position = pos;
             }

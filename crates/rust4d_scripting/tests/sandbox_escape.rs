@@ -4,8 +4,8 @@
 //! a forbidden action. The test passes if the script errors (or the
 //! forbidden global is nil).
 
-use rust4d_scripting::ScriptConfig;
 use rust4d_scripting::vm::create_lua_vm;
+use rust4d_scripting::ScriptConfig;
 
 /// Helper: create a sandboxed Lua VM with default config.
 fn sandboxed_vm() -> mlua::Lua {
@@ -182,10 +182,7 @@ fn sandbox_blocks_require_c_module() {
     // Attempting to require a C module should fail because cpath is empty
     // and loadlib is removed
     let result = lua.load(r#"require("socket")"#).exec();
-    assert!(
-        result.is_err(),
-        "require('socket') should fail in sandbox"
-    );
+    assert!(result.is_err(), "require('socket') should fail in sandbox");
 }
 
 // ---------------------------------------------------------------------------
@@ -229,10 +226,7 @@ fn sandbox_blocks_rawget_global_restore() {
         .load(r#"return rawget(_G, "os")"#)
         .eval()
         .unwrap_or(mlua::Value::Nil);
-    assert!(
-        result == mlua::Value::Nil,
-        "rawget(_G, 'os') should be nil"
-    );
+    assert!(result == mlua::Value::Nil, "rawget(_G, 'os') should be nil");
 }
 
 #[test]
@@ -242,10 +236,7 @@ fn sandbox_blocks_rawget_io() {
         .load(r#"return rawget(_G, "io")"#)
         .eval()
         .unwrap_or(mlua::Value::Nil);
-    assert!(
-        result == mlua::Value::Nil,
-        "rawget(_G, 'io') should be nil"
-    );
+    assert!(result == mlua::Value::Nil, "rawget(_G, 'io') should be nil");
 }
 
 #[test]

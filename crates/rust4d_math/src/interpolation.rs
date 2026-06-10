@@ -3,7 +3,7 @@
 //! This module provides the [`Interpolatable`] trait for types that support
 //! linear interpolation (lerp), which is foundational for animation and tweening.
 
-use crate::{Vec4, Rotor4};
+use crate::{Rotor4, Vec4};
 
 /// Trait for types that can be linearly interpolated
 ///
@@ -88,7 +88,9 @@ impl Interpolatable for Rotor4 {
         // If dot is negative, negate one rotor to take the shorter path
         let (b_s, b_xy, b_xz, b_xw, b_yz, b_yw, b_zw, b_p) = if dot < 0.0 {
             dot = -dot;
-            (-b.s, -b.b_xy, -b.b_xz, -b.b_xw, -b.b_yz, -b.b_yw, -b.b_zw, -b.p)
+            (
+                -b.s, -b.b_xy, -b.b_xz, -b.b_xw, -b.b_yz, -b.b_yw, -b.b_zw, -b.p,
+            )
         } else {
             (b.s, b.b_xy, b.b_xz, b.b_xw, b.b_yz, b.b_yw, b.b_zw, b.p)
         };
@@ -131,15 +133,16 @@ impl Interpolatable for Rotor4 {
             b_yw: scale_a * a.b_yw + scale_b * b_yw,
             b_zw: scale_a * a.b_zw + scale_b * b_zw,
             p: scale_a * a.p + scale_b * b_p,
-        }.normalize()
+        }
+        .normalize()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f32::consts::PI;
     use crate::RotationPlane;
+    use std::f32::consts::PI;
 
     const EPSILON: f32 = 0.001;
 
@@ -203,7 +206,12 @@ mod tests {
         let v = Vec4::X;
         let expected = b.rotate(v);
         let actual = at_one.rotate(v);
-        assert!(vec_approx_eq(actual, expected), "expected {:?}, got {:?}", expected, actual);
+        assert!(
+            vec_approx_eq(actual, expected),
+            "expected {:?}, got {:?}",
+            expected,
+            actual
+        );
     }
 
     #[test]
@@ -219,8 +227,18 @@ mod tests {
         // 45 degrees in XY should put X at (cos45, sin45, 0, 0)
         let expected_x = (PI / 4.0).cos();
         let expected_y = (PI / 4.0).sin();
-        assert!(approx_eq(rotated.x, expected_x), "x: {} vs {}", rotated.x, expected_x);
-        assert!(approx_eq(rotated.y, expected_y), "y: {} vs {}", rotated.y, expected_y);
+        assert!(
+            approx_eq(rotated.x, expected_x),
+            "x: {} vs {}",
+            rotated.x,
+            expected_x
+        );
+        assert!(
+            approx_eq(rotated.y, expected_y),
+            "y: {} vs {}",
+            rotated.y,
+            expected_y
+        );
     }
 
     #[test]
@@ -237,8 +255,18 @@ mod tests {
         // Should be at -45 degrees, not 135 degrees
         let expected_x = (PI / 4.0).cos();
         let expected_y = -(PI / 4.0).sin();
-        assert!(approx_eq(rotated.x, expected_x), "x: {} vs {}", rotated.x, expected_x);
-        assert!(approx_eq(rotated.y, expected_y), "y: {} vs {}", rotated.y, expected_y);
+        assert!(
+            approx_eq(rotated.x, expected_x),
+            "x: {} vs {}",
+            rotated.x,
+            expected_x
+        );
+        assert!(
+            approx_eq(rotated.y, expected_y),
+            "y: {} vs {}",
+            rotated.y,
+            expected_y
+        );
     }
 
     #[test]

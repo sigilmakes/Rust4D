@@ -249,6 +249,9 @@ For physics, hyperplanes are represented separately as collision primitives.
 
 #### How Shapes Appear When Sliced
 
+For a complete catalog of built-in 4D shapes and their slice behavior, see the
+[Shape Catalog](./shapes.md).
+
 The camera views 4D space by taking a 3D cross-section (slice) at a specific W coordinate. What you see depends on:
 
 1. **Object's W position** relative to slice W
@@ -465,6 +468,12 @@ let material = Material {
 ## Creating Entities
 
 ### Built-in Shapes
+
+Rust4D now ships a full primitive catalog: tesseract, hypersphere,
+pentachoron (5-cell), hexadecachoron (16-cell), icositetrachoron (24-cell),
+hexacosichoron (600-cell), spherinder, cubinder, and duocylinder. See the
+[Shape Catalog](./shapes.md) for construction math, RON snippets, cell counts,
+and visual verification notes for every primitive.
 
 #### Tesseract
 

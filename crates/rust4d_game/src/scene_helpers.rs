@@ -12,7 +12,9 @@ use rust4d_physics::{BodyKey, BodyType, PhysicsMaterial, PhysicsWorld, RigidBody
 ///
 /// Returns the player spawn position as a `Vec4`, or `None` if no spawn is defined.
 pub fn find_player_spawn(scene: &Scene) -> Option<Vec4> {
-    scene.player_spawn.map(|s| Vec4::new(s[0], s[1], s[2], s[3]))
+    scene
+        .player_spawn
+        .map(|s| Vec4::new(s[0], s[1], s[2], s[3]))
 }
 
 /// Create a player body in the physics world
@@ -29,11 +31,7 @@ pub fn find_player_spawn(scene: &Scene) -> Option<Vec4> {
 ///
 /// # Returns
 /// The `BodyKey` for the newly created player body.
-pub fn create_player_body(
-    physics: &mut PhysicsWorld,
-    position: Vec4,
-    radius: f32,
-) -> BodyKey {
+pub fn create_player_body(physics: &mut PhysicsWorld, position: Vec4, radius: f32) -> BodyKey {
     let body = RigidBody4D::new_sphere(position, radius)
         .with_body_type(BodyType::Kinematic)
         .with_gravity(true) // Kinematic but needs gravity for jumping/falling
@@ -49,8 +47,7 @@ mod tests {
 
     #[test]
     fn test_find_player_spawn_some() {
-        let scene = Scene::new("Test")
-            .with_player_spawn(1.0, 2.0, 3.0, 4.0);
+        let scene = Scene::new("Test").with_player_spawn(1.0, 2.0, 3.0, 4.0);
 
         let spawn = find_player_spawn(&scene);
         assert!(spawn.is_some());
@@ -112,8 +109,14 @@ mod tests {
         physics.step(0.1);
 
         let body = physics.get_body(key).unwrap();
-        assert!(body.position.y < 10.0, "Player body should fall with gravity");
-        assert!(body.velocity.y < 0.0, "Player body should have downward velocity");
+        assert!(
+            body.position.y < 10.0,
+            "Player body should fall with gravity"
+        );
+        assert!(
+            body.velocity.y < 0.0,
+            "Player body should have downward velocity"
+        );
     }
 
     #[test]
@@ -129,8 +132,7 @@ mod tests {
 
     #[test]
     fn test_find_player_spawn_with_zeros() {
-        let scene = Scene::new("Test")
-            .with_player_spawn(0.0, 0.0, 0.0, 0.0);
+        let scene = Scene::new("Test").with_player_spawn(0.0, 0.0, 0.0, 0.0);
 
         let spawn = find_player_spawn(&scene);
         assert!(spawn.is_some());
@@ -141,22 +143,28 @@ mod tests {
     /// T5: create_player_body + CharacterController4D round-trip
     #[test]
     fn test_create_player_body_with_character_controller_round_trip() {
-        use crate::{CharacterController4D, CharacterConfig};
+        use crate::{CharacterConfig, CharacterController4D};
         use rust4d_physics::StaticCollider;
 
         let mut physics = PhysicsWorld::with_config(PhysicsConfig::new(-20.0));
-        physics.add_static_collider(StaticCollider::floor(0.0, rust4d_physics::PhysicsMaterial::CONCRETE));
+        physics.add_static_collider(StaticCollider::floor(
+            0.0,
+            rust4d_physics::PhysicsMaterial::CONCRETE,
+        ));
 
         // Create player body via scene_helpers
         let spawn = Vec4::new(0.0, 1.0, 0.0, 0.0);
         let key = create_player_body(&mut physics, spawn, 0.5);
 
         // Wrap in CharacterController4D
-        let controller = CharacterController4D::new(key, CharacterConfig {
-            move_speed: 5.0,
-            w_move_speed: 5.0,
-            jump_velocity: 10.0,
-        });
+        let controller = CharacterController4D::new(
+            key,
+            CharacterConfig {
+                move_speed: 5.0,
+                w_move_speed: 5.0,
+                jump_velocity: 10.0,
+            },
+        );
 
         // Verify initial position matches spawn
         let pos = controller.position(&physics).expect("Body should exist");
@@ -167,11 +175,14 @@ mod tests {
         physics.step(0.016);
 
         // Position should have changed
-        let pos_after = controller.position(&physics).expect("Body should still exist");
+        let pos_after = controller
+            .position(&physics)
+            .expect("Body should still exist");
         assert!(
             (pos_after.x - spawn.x).abs() > 0.01,
             "X position should change after movement. Before: {}, After: {}",
-            spawn.x, pos_after.x
+            spawn.x,
+            pos_after.x
         );
 
         // Step physics until grounded

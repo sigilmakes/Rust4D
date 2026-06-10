@@ -398,8 +398,7 @@ mod tests {
 
     #[test]
     fn test_with_material() {
-        let body = RigidBody4D::new_sphere(Vec4::ZERO, 1.0)
-            .with_material(PhysicsMaterial::RUBBER);
+        let body = RigidBody4D::new_sphere(Vec4::ZERO, 1.0).with_material(PhysicsMaterial::RUBBER);
 
         assert_eq!(body.material, PhysicsMaterial::RUBBER);
     }
@@ -448,8 +447,7 @@ mod tests {
     #[test]
     fn test_with_filter() {
         use crate::collision::CollisionLayer;
-        let body = RigidBody4D::new_sphere(Vec4::ZERO, 1.0)
-            .with_filter(CollisionFilter::player());
+        let body = RigidBody4D::new_sphere(Vec4::ZERO, 1.0).with_filter(CollisionFilter::player());
 
         assert_eq!(body.filter.layer, CollisionLayer::PLAYER);
     }
@@ -457,8 +455,7 @@ mod tests {
     #[test]
     fn test_with_layer() {
         use crate::collision::CollisionLayer;
-        let body = RigidBody4D::new_sphere(Vec4::ZERO, 1.0)
-            .with_layer(CollisionLayer::ENEMY);
+        let body = RigidBody4D::new_sphere(Vec4::ZERO, 1.0).with_layer(CollisionLayer::ENEMY);
 
         assert_eq!(body.filter.layer, CollisionLayer::ENEMY);
     }
@@ -495,10 +492,10 @@ mod tests {
     fn test_floor_bounded_creates_aabb() {
         use crate::shapes::Collider;
         let collider = StaticCollider::floor_bounded(
-            0.0,   // y: floor surface at y=0
-            10.0,  // half_size_xz
-            5.0,   // half_size_w
-            1.0,   // thickness (clamped to minimum 5.0)
+            0.0,  // y: floor surface at y=0
+            10.0, // half_size_xz
+            5.0,  // half_size_w
+            1.0,  // thickness (clamped to minimum 5.0)
             PhysicsMaterial::CONCRETE,
         );
 
@@ -529,10 +526,10 @@ mod tests {
         use crate::shapes::Collider;
         // Thin thickness is clamped to minimum 5.0
         let collider = StaticCollider::floor_bounded(
-            5.0,   // y: floor surface at y=5
-            1.0,   // half_size_xz
-            1.0,   // half_size_w
-            0.01,  // thickness (clamped to 5.0)
+            5.0,  // y: floor surface at y=5
+            1.0,  // half_size_xz
+            1.0,  // half_size_w
+            0.01, // thickness (clamped to 5.0)
             PhysicsMaterial::RUBBER,
         );
 
@@ -552,10 +549,10 @@ mod tests {
         use crate::shapes::Collider;
         // Can specify larger thickness
         let collider = StaticCollider::floor_bounded(
-            0.0,   // y: floor surface at y=0
-            10.0,  // half_size_xz
-            5.0,   // half_size_w
-            20.0,  // thickness (larger than minimum)
+            0.0,  // y: floor surface at y=0
+            10.0, // half_size_xz
+            5.0,  // half_size_w
+            20.0, // thickness (larger than minimum)
             PhysicsMaterial::CONCRETE,
         );
 
@@ -570,8 +567,8 @@ mod tests {
 
     #[test]
     fn test_floor_bounded_collision_with_sphere() {
-        use crate::shapes::{Collider, Sphere4D};
         use crate::collision::sphere_vs_aabb;
+        use crate::shapes::{Collider, Sphere4D};
 
         // Values from default.ron scene
         let collider = StaticCollider::floor_bounded(
@@ -589,41 +586,54 @@ mod tests {
 
         // Verify floor bounds
         assert_eq!(aabb.max.y, -2.0, "Floor top should be at y=-2");
-        assert_eq!(aabb.min.y, -7.0, "Floor bottom should extend 5 units down (minimum)");
+        assert_eq!(
+            aabb.min.y, -7.0,
+            "Floor bottom should extend 5 units down (minimum)"
+        );
 
         // Player spawn at (0, 0, 5, 0) with radius 0.5
         let player_radius = 0.5;
 
         // Player at spawn position (above floor) - should NOT collide
         let player_above = Sphere4D::new(Vec4::new(0.0, 0.0, 5.0, 0.0), player_radius);
-        assert!(sphere_vs_aabb(&player_above, aabb).is_none(), "Player at spawn should not collide");
+        assert!(
+            sphere_vs_aabb(&player_above, aabb).is_none(),
+            "Player at spawn should not collide"
+        );
 
         // Player fallen to slightly penetrating floor (center at y = -2 + 0.5 - 0.1 = -1.6)
         // This is 0.1 units below the tangent point
-        let player_penetrating_slight = Sphere4D::new(Vec4::new(0.0, -1.6, 5.0, 0.0), player_radius);
+        let player_penetrating_slight =
+            Sphere4D::new(Vec4::new(0.0, -1.6, 5.0, 0.0), player_radius);
         let contact = sphere_vs_aabb(&player_penetrating_slight, aabb);
         assert!(contact.is_some(), "Player penetrating floor should collide");
 
         // Player outside X/Z bounds - should NOT collide (can fall off edge)
         let player_off_edge_xz = Sphere4D::new(Vec4::new(15.0, -1.6, 5.0, 0.0), player_radius);
-        assert!(sphere_vs_aabb(&player_off_edge_xz, aabb).is_none(), "Player off X edge should not collide");
+        assert!(
+            sphere_vs_aabb(&player_off_edge_xz, aabb).is_none(),
+            "Player off X edge should not collide"
+        );
 
         // Player outside W bounds - should NOT collide (can fall off W edge)
         // Floor W extent is -5 to +5, so W=10 is outside
         let player_off_edge_w = Sphere4D::new(Vec4::new(0.0, -1.6, 5.0, 10.0), player_radius);
-        assert!(sphere_vs_aabb(&player_off_edge_w, aabb).is_none(), "Player off W edge should not collide");
+        assert!(
+            sphere_vs_aabb(&player_off_edge_w, aabb).is_none(),
+            "Player off W edge should not collide"
+        );
     }
 
     #[test]
     fn test_floor_bounded_4d_edges() {
-        use crate::shapes::{Collider, Sphere4D};
         use crate::collision::sphere_vs_aabb;
+        use crate::shapes::{Collider, Sphere4D};
 
         let collider = StaticCollider::floor_bounded(
-            -2.0,  // y: floor surface
-            10.0,  // half_size_xz (X/Z from -10 to +10)
-            5.0,   // half_size_w (W from -5 to +5)
-            5.0,   // thickness
+            -2.0, // y: floor surface
+            10.0, // half_size_xz (X/Z from -10 to +10)
+            5.0,  // half_size_w (W from -5 to +5)
+            5.0,  // thickness
             PhysicsMaterial::CONCRETE,
         );
 
@@ -637,23 +647,38 @@ mod tests {
 
         // On floor at center - SHOULD collide
         let on_floor = Sphere4D::new(Vec4::new(0.0, y_on_floor, 0.0, 0.0), radius);
-        assert!(sphere_vs_aabb(&on_floor, aabb).is_some(), "Center should collide");
+        assert!(
+            sphere_vs_aabb(&on_floor, aabb).is_some(),
+            "Center should collide"
+        );
 
         // On floor at W=-4 (inside W bounds) - SHOULD collide
         let inside_w = Sphere4D::new(Vec4::new(0.0, y_on_floor, 0.0, -4.0), radius);
-        assert!(sphere_vs_aabb(&inside_w, aabb).is_some(), "Inside W bounds should collide");
+        assert!(
+            sphere_vs_aabb(&inside_w, aabb).is_some(),
+            "Inside W bounds should collide"
+        );
 
         // Off floor at W=6 (outside W bounds) - should NOT collide
         let outside_w_pos = Sphere4D::new(Vec4::new(0.0, y_on_floor, 0.0, 6.0), radius);
-        assert!(sphere_vs_aabb(&outside_w_pos, aabb).is_none(), "Outside +W should not collide");
+        assert!(
+            sphere_vs_aabb(&outside_w_pos, aabb).is_none(),
+            "Outside +W should not collide"
+        );
 
         // Off floor at W=-6 (outside W bounds) - should NOT collide
         let outside_w_neg = Sphere4D::new(Vec4::new(0.0, y_on_floor, 0.0, -6.0), radius);
-        assert!(sphere_vs_aabb(&outside_w_neg, aabb).is_none(), "Outside -W should not collide");
+        assert!(
+            sphere_vs_aabb(&outside_w_neg, aabb).is_none(),
+            "Outside -W should not collide"
+        );
 
         // Off floor at X=12 - should NOT collide
         let outside_x = Sphere4D::new(Vec4::new(12.0, y_on_floor, 0.0, 0.0), radius);
-        assert!(sphere_vs_aabb(&outside_x, aabb).is_none(), "Outside X should not collide");
+        assert!(
+            sphere_vs_aabb(&outside_x, aabb).is_none(),
+            "Outside X should not collide"
+        );
     }
 
     // ===== is_position_over Tests =====
@@ -661,10 +686,10 @@ mod tests {
     #[test]
     fn test_is_position_over_aabb_inside() {
         let floor = StaticCollider::floor_bounded(
-            0.0,   // y
-            10.0,  // half_size_xz (X/Z: -10 to +10)
-            5.0,   // half_size_w (W: -5 to +5)
-            5.0,   // thickness
+            0.0,  // y
+            10.0, // half_size_xz (X/Z: -10 to +10)
+            5.0,  // half_size_w (W: -5 to +5)
+            5.0,  // thickness
             PhysicsMaterial::CONCRETE,
         );
 
@@ -681,10 +706,10 @@ mod tests {
     #[test]
     fn test_is_position_over_aabb_outside() {
         let floor = StaticCollider::floor_bounded(
-            0.0,   // y
-            10.0,  // half_size_xz (X/Z: -10 to +10)
-            5.0,   // half_size_w (W: -5 to +5)
-            5.0,   // thickness
+            0.0,  // y
+            10.0, // half_size_xz (X/Z: -10 to +10)
+            5.0,  // half_size_w (W: -5 to +5)
+            5.0,  // thickness
             PhysicsMaterial::CONCRETE,
         );
 
@@ -717,10 +742,10 @@ mod tests {
     #[test]
     fn test_is_position_over_ignores_y() {
         let floor = StaticCollider::floor_bounded(
-            0.0,   // y: floor at y=0
-            10.0,  // half_size_xz
-            5.0,   // half_size_w
-            5.0,   // thickness (floor AABB: y from -5 to 0)
+            0.0,  // y: floor at y=0
+            10.0, // half_size_xz
+            5.0,  // half_size_w
+            5.0,  // thickness (floor AABB: y from -5 to 0)
             PhysicsMaterial::CONCRETE,
         );
 

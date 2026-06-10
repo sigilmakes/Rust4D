@@ -107,8 +107,7 @@ mod tests {
 
     #[test]
     fn test_key_release_ignored() {
-        let action =
-            InputMapper::map_keyboard(KeyCode::Escape, ElementState::Released, true);
+        let action = InputMapper::map_keyboard(KeyCode::Escape, ElementState::Released, true);
         assert_eq!(action, None);
     }
 

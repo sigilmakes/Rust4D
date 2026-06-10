@@ -4,11 +4,11 @@
 //! It provides side-tables for name lookups, tag indexing, and physics integration,
 //! and stores hierarchy as Parent/Children components.
 
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::fmt;
 use crate::components::*;
 use crate::{DirtyFlags, Transform4D};
 use rust4d_physics::{PhysicsConfig, PhysicsWorld};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt;
 
 /// Error type for hierarchy operations
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,7 +113,10 @@ impl World {
             let name_str = name.0.clone();
             drop(name);
             if let Some(_old) = self.name_index.insert(name_str.clone(), entity) {
-                log::warn!("Name '{}' already exists in world; overwriting index entry", name_str);
+                log::warn!(
+                    "Name '{}' already exists in world; overwriting index entry",
+                    name_str
+                );
             }
         }
 
@@ -193,7 +196,10 @@ impl World {
             if let Some(ref mut physics) = self.physics_world {
                 let result = physics.remove_body(body_key);
                 if result.is_none() {
-                    log::warn!("Physics body {:?} not found during entity despawn cleanup", body_key);
+                    log::warn!(
+                        "Physics body {:?} not found during entity despawn cleanup",
+                        body_key
+                    );
                 }
             }
         }
@@ -207,7 +213,9 @@ impl World {
         }
 
         // Orphan all children (remove Parent component, add them to roots)
-        let child_list: Vec<hecs::Entity> = self.ecs.get::<&Children>(entity)
+        let child_list: Vec<hecs::Entity> = self
+            .ecs
+            .get::<&Children>(entity)
             .ok()
             .map(|c| c.0.clone())
             .unwrap_or_default();
@@ -253,7 +261,11 @@ impl World {
     ///
     /// Returns `Some(())` on success, `None` if the entity doesn't exist
     /// or doesn't have a Name component.
-    pub fn rename_entity(&mut self, entity: hecs::Entity, new_name: impl Into<String>) -> Option<()> {
+    pub fn rename_entity(
+        &mut self,
+        entity: hecs::Entity,
+        new_name: impl Into<String>,
+    ) -> Option<()> {
         // Remove old name from index
         let old_name = self.ecs.get::<&Name>(entity).ok().map(|n| n.0.clone())?;
         self.name_index.remove(&old_name);
@@ -267,7 +279,10 @@ impl World {
 
         // Add new name to index
         if let Some(_old) = self.name_index.insert(new_name.clone(), entity) {
-            log::warn!("Name '{}' already exists in world; overwriting index entry", new_name);
+            log::warn!(
+                "Name '{}' already exists in world; overwriting index entry",
+                new_name
+            );
         }
 
         Some(())
@@ -289,7 +304,8 @@ impl World {
     ///
     /// Uses the tag index for O(1) lookup instead of scanning.
     pub fn get_by_tag(&self, tag: &str) -> Vec<hecs::Entity> {
-        self.tag_index.get(tag)
+        self.tag_index
+            .get(tag)
             .map(|set| set.iter().copied().collect())
             .unwrap_or_default()
     }
@@ -335,7 +351,8 @@ impl World {
         // Sync entity transforms from their physics bodies
         if let Some(ref physics) = self.physics_world {
             for (_entity, (transform, body, dirty)) in
-                self.ecs.query_mut::<(&mut Transform4D, &PhysicsBody, &mut DirtyFlags)>()
+                self.ecs
+                    .query_mut::<(&mut Transform4D, &PhysicsBody, &mut DirtyFlags)>()
             {
                 if let Some(phys_body) = physics.get_body(body.0) {
                     if transform.position != phys_body.position {
@@ -375,7 +392,8 @@ impl World {
 
     /// Get an entity's children
     pub fn children_of(&self, entity: hecs::Entity) -> Vec<hecs::Entity> {
-        self.ecs.get::<&Children>(entity)
+        self.ecs
+            .get::<&Children>(entity)
             .ok()
             .map(|c| c.0.clone())
             .unwrap_or_default()
@@ -383,7 +401,8 @@ impl World {
 
     /// Check if an entity has any children
     pub fn has_children(&self, entity: hecs::Entity) -> bool {
-        self.ecs.get::<&Children>(entity)
+        self.ecs
+            .get::<&Children>(entity)
             .ok()
             .is_some_and(|c| !c.0.is_empty())
     }
@@ -399,7 +418,11 @@ impl World {
     /// that parent (reparenting). Returns an error if either entity does not
     /// exist, if the relationship would create a cycle, or if the child is
     /// already a child of the specified parent.
-    pub fn add_child(&mut self, parent: hecs::Entity, child: hecs::Entity) -> Result<(), HierarchyError> {
+    pub fn add_child(
+        &mut self,
+        parent: hecs::Entity,
+        child: hecs::Entity,
+    ) -> Result<(), HierarchyError> {
         // Validate both entities exist
         if !self.ecs.contains(parent) || !self.ecs.contains(child) {
             return Err(HierarchyError::InvalidEntity);
@@ -488,7 +511,10 @@ impl World {
         while let Ok(parent) = self.ecs.get::<&Parent>(current) {
             depth += 1;
             if depth > MAX_DEPTH {
-                log::error!("world_transform: depth limit ({}) exceeded for entity, possible cycle", MAX_DEPTH);
+                log::error!(
+                    "world_transform: depth limit ({}) exceeded for entity, possible cycle",
+                    MAX_DEPTH
+                );
                 break;
             }
             let parent_entity = parent.0;
@@ -631,7 +657,6 @@ impl World {
             }
         }
 
-
         // Check all Children components for stale/non-existent references
         for (entity, children) in self.ecs.query::<&Children>().iter() {
             for &child in &children.0 {
@@ -698,7 +723,9 @@ impl World {
         // PhysicsBody requires Transform4D
         for (entity, _body) in self.ecs.query::<&PhysicsBody>().iter() {
             if self.ecs.get::<&Transform4D>(entity).is_err() {
-                let name = self.ecs.get::<&Name>(entity)
+                let name = self
+                    .ecs
+                    .get::<&Name>(entity)
                     .map(|n| format!(" (\"{}\")", n.0))
                     .unwrap_or_default();
                 warnings.push(format!(
@@ -712,7 +739,9 @@ impl World {
         for (entity, children) in self.ecs.query::<&Children>().iter() {
             for &child in &children.0 {
                 if self.ecs.contains(child) && self.ecs.get::<&Parent>(child).is_err() {
-                    let name = self.ecs.get::<&Name>(entity)
+                    let name = self
+                        .ecs
+                        .get::<&Name>(entity)
                         .map(|n| format!(" (\"{}\")", n.0))
                         .unwrap_or_default();
                     warnings.push(format!(
@@ -726,7 +755,9 @@ impl World {
         // Parent component but no Transform4D (hierarchy nodes usually need transforms)
         for (entity, _parent) in self.ecs.query::<&Parent>().iter() {
             if self.ecs.get::<&Transform4D>(entity).is_err() {
-                let name = self.ecs.get::<&Name>(entity)
+                let name = self
+                    .ecs
+                    .get::<&Name>(entity)
                     .map(|n| format!(" (\"{}\")", n.0))
                     .unwrap_or_default();
                 warnings.push(format!(
@@ -779,7 +810,8 @@ mod tests {
 
     fn spawn_tagged_entity(world: &mut World, name: &str, tags: &[&str]) -> hecs::Entity {
         let tesseract = Tesseract4D::new(2.0);
-        let tag_set: std::collections::HashSet<String> = tags.iter().map(|t| t.to_string()).collect();
+        let tag_set: std::collections::HashSet<String> =
+            tags.iter().map(|t| t.to_string()).collect();
         world.spawn((
             ShapeRef::shared(tesseract),
             Transform4D::identity(),
@@ -823,7 +855,10 @@ mod tests {
         let handle = spawn_test_entity(&mut world);
 
         {
-            let mut material = world.ecs_mut_unchecked().get::<&mut Material>(handle).unwrap();
+            let mut material = world
+                .ecs_mut_unchecked()
+                .get::<&mut Material>(handle)
+                .unwrap();
             *material = Material::RED;
         }
 
@@ -901,8 +936,8 @@ mod tests {
 
     #[test]
     fn test_world_with_physics() {
-        use rust4d_physics::RigidBody4D;
         use rust4d_math::Vec4;
+        use rust4d_physics::RigidBody4D;
 
         // Create a world with physics enabled (no gravity for predictable test)
         let config = PhysicsConfig::new(0.0);
@@ -938,15 +973,18 @@ mod tests {
 
         // Entity transform should now reflect the physics body position
         let transform = world.ecs().get::<&Transform4D>(entity_handle).unwrap();
-        assert!((transform.position.x - 10.0).abs() < 0.2,
-            "Expected ~10.0, got {}", transform.position.x);
+        assert!(
+            (transform.position.x - 10.0).abs() < 0.2,
+            "Expected ~10.0, got {}",
+            transform.position.x
+        );
         assert!((transform.position.y - 5.0).abs() < 0.001);
     }
 
     #[test]
     fn test_physics_sync_with_gravity() {
-        use rust4d_physics::RigidBody4D;
         use rust4d_math::Vec4;
+        use rust4d_physics::RigidBody4D;
 
         // Create a world with gravity (default config)
         let mut world = World::new().with_physics(PhysicsConfig::default());
@@ -1127,13 +1165,19 @@ mod tests {
 
         // Manually mark one as dirty
         {
-            let mut dirty = world.ecs_mut_unchecked().get::<&mut DirtyFlags>(key1).unwrap();
+            let mut dirty = world
+                .ecs_mut_unchecked()
+                .get::<&mut DirtyFlags>(key1)
+                .unwrap();
             *dirty |= DirtyFlags::TRANSFORM;
         }
         // Note: dirty_count won't track this since we used ecs_mut_unchecked
 
         // Count dirty entities via query
-        let dirty_count = world.ecs().query::<&DirtyFlags>().iter()
+        let dirty_count = world
+            .ecs()
+            .query::<&DirtyFlags>()
+            .iter()
             .filter(|(_, d)| !d.is_empty())
             .count();
         assert_eq!(dirty_count, 1);
@@ -1141,8 +1185,8 @@ mod tests {
 
     #[test]
     fn test_physics_sync_marks_dirty() {
-        use rust4d_physics::RigidBody4D;
         use rust4d_math::Vec4;
+        use rust4d_physics::RigidBody4D;
 
         // Create a world with physics enabled (no gravity for predictable test)
         let config = PhysicsConfig::new(0.0);
@@ -1178,8 +1222,8 @@ mod tests {
 
     #[test]
     fn test_physics_sync_no_change_not_dirty() {
-        use rust4d_physics::RigidBody4D;
         use rust4d_math::Vec4;
+        use rust4d_physics::RigidBody4D;
 
         // Create a world with physics (no gravity, no velocity = no movement)
         let config = PhysicsConfig::new(0.0);
@@ -1259,16 +1303,10 @@ mod tests {
         assert!(world.add_child(a, b).is_ok());
 
         // B -> A would create a cycle
-        assert_eq!(
-            world.add_child(b, a),
-            Err(HierarchyError::CyclicHierarchy)
-        );
+        assert_eq!(world.add_child(b, a), Err(HierarchyError::CyclicHierarchy));
 
         // Self-parenting should also be rejected
-        assert_eq!(
-            world.add_child(a, a),
-            Err(HierarchyError::CyclicHierarchy)
-        );
+        assert_eq!(world.add_child(a, a), Err(HierarchyError::CyclicHierarchy));
     }
 
     #[test]
@@ -1283,10 +1321,7 @@ mod tests {
         assert!(world.add_child(b, c).is_ok());
 
         // C -> A would create a cycle (A is ancestor of C)
-        assert_eq!(
-            world.add_child(c, a),
-            Err(HierarchyError::CyclicHierarchy)
-        );
+        assert_eq!(world.add_child(c, a), Err(HierarchyError::CyclicHierarchy));
     }
 
     #[test]
@@ -1346,10 +1381,16 @@ mod tests {
         world.add_child(parent, child).unwrap();
 
         let wt = world.world_transform(child).unwrap();
-        assert!((wt.position.x - 11.0).abs() < 0.001,
-            "Expected x=11.0, got {}", wt.position.x);
-        assert!((wt.position.y - 2.0).abs() < 0.001,
-            "Expected y=2.0, got {}", wt.position.y);
+        assert!(
+            (wt.position.x - 11.0).abs() < 0.001,
+            "Expected x=11.0, got {}",
+            wt.position.x
+        );
+        assert!(
+            (wt.position.y - 2.0).abs() < 0.001,
+            "Expected y=2.0, got {}",
+            wt.position.y
+        );
     }
 
     #[test]
@@ -1358,7 +1399,8 @@ mod tests {
 
         // Parent with scale 2 at origin
         let tesseract = Tesseract4D::new(2.0);
-        let mut parent_transform = Transform4D::from_position(rust4d_math::Vec4::new(0.0, 0.0, 0.0, 0.0));
+        let mut parent_transform =
+            Transform4D::from_position(rust4d_math::Vec4::new(0.0, 0.0, 0.0, 0.0));
         parent_transform.scale = 2.0;
         let parent = world.spawn((
             ShapeRef::shared(tesseract),
@@ -1373,8 +1415,11 @@ mod tests {
         world.add_child(parent, child).unwrap();
 
         let wt = world.world_transform(child).unwrap();
-        assert!((wt.position.x - 2.0).abs() < 0.001,
-            "Expected x=2.0, got {}", wt.position.x);
+        assert!(
+            (wt.position.x - 2.0).abs() < 0.001,
+            "Expected x=2.0, got {}",
+            wt.position.x
+        );
     }
 
     #[test]
@@ -1484,9 +1529,9 @@ mod tests {
         world.add_child(a, b).unwrap();
         world.add_child(b, c).unwrap();
 
-        assert!(world.is_ancestor(a, b));  // A is ancestor of B
-        assert!(world.is_ancestor(a, c));  // A is ancestor of C (transitive)
-        assert!(world.is_ancestor(b, c));  // B is ancestor of C
+        assert!(world.is_ancestor(a, b)); // A is ancestor of B
+        assert!(world.is_ancestor(a, c)); // A is ancestor of C (transitive)
+        assert!(world.is_ancestor(b, c)); // B is ancestor of C
         assert!(!world.is_ancestor(c, a)); // C is NOT ancestor of A
         assert!(!world.is_ancestor(a, a)); // Not ancestor of self
         assert!(!world.is_ancestor(a, d)); // D is unrelated
@@ -1579,8 +1624,11 @@ mod tests {
         world.add_child(parent, child).unwrap();
 
         let wt = world.world_transform(child).unwrap();
-        assert!((wt.position.x - 16.0).abs() < 0.001,
-            "Expected x=16.0, got {}", wt.position.x);
+        assert!(
+            (wt.position.x - 16.0).abs() < 0.001,
+            "Expected x=16.0, got {}",
+            wt.position.x
+        );
     }
 
     #[test]
@@ -1788,7 +1836,7 @@ mod tests {
 
     #[test]
     fn test_despawn_cleans_up_physics_body() {
-        use rust4d_physics::{PhysicsMaterial, BodyType};
+        use rust4d_physics::{BodyType, PhysicsMaterial};
 
         let config = crate::PhysicsConfig::new(-9.81);
         let mut world = World::new().with_physics(config);
@@ -1799,9 +1847,10 @@ mod tests {
             let body = crate::RigidBody4D::new_aabb(
                 rust4d_math::Vec4::new(0.0, 5.0, 0.0, 0.0),
                 rust4d_math::Vec4::new(0.5, 0.5, 0.5, 0.5),
-            ).with_body_type(BodyType::Dynamic)
-             .with_mass(1.0)
-             .with_material(PhysicsMaterial::RUBBER);
+            )
+            .with_body_type(BodyType::Dynamic)
+            .with_mass(1.0)
+            .with_material(PhysicsMaterial::RUBBER);
             physics.add_body(body)
         };
 
@@ -1831,10 +1880,15 @@ mod tests {
 
         // Manually set Parent to nonexistent entity (bypassing add_child)
         let fake_parent = hecs::Entity::DANGLING;
-        let _ = world.ecs_mut_unchecked().insert_one(child, Parent(fake_parent));
+        let _ = world
+            .ecs_mut_unchecked()
+            .insert_one(child, Parent(fake_parent));
 
         let issues = world.validate_hierarchy();
-        assert!(!issues.is_empty(), "Should detect parent pointing to nonexistent entity");
+        assert!(
+            !issues.is_empty(),
+            "Should detect parent pointing to nonexistent entity"
+        );
     }
 
     #[test]
@@ -1847,7 +1901,10 @@ mod tests {
         let _ = world.ecs_mut_unchecked().insert_one(child, Parent(parent));
 
         let issues = world.validate_hierarchy();
-        assert!(!issues.is_empty(), "Should detect child not listed in parent's Children");
+        assert!(
+            !issues.is_empty(),
+            "Should detect child not listed in parent's Children"
+        );
     }
 
     #[test]
@@ -1865,7 +1922,8 @@ mod tests {
         let issues = world.validate_hierarchy();
         assert!(
             issues.iter().any(|i| i.contains("non-existent")),
-            "Should detect stale child reference; got: {:?}", issues
+            "Should detect stale child reference; got: {:?}",
+            issues
         );
     }
 
@@ -1880,12 +1938,15 @@ mod tests {
         world.add_child(parent_a, child).unwrap();
 
         // Now manually add child to parent_b's Children without updating child's Parent
-        let _ = world.ecs_mut_unchecked().insert_one(parent_b, Children(vec![child]));
+        let _ = world
+            .ecs_mut_unchecked()
+            .insert_one(parent_b, Children(vec![child]));
 
         let issues = world.validate_hierarchy();
         assert!(
             issues.iter().any(|i| i.contains("child's Parent")),
-            "Should detect child-parent mismatch; got: {:?}", issues
+            "Should detect child-parent mismatch; got: {:?}",
+            issues
         );
     }
 
@@ -1893,14 +1954,17 @@ mod tests {
     fn test_validate_component_schemas_physics_no_transform() {
         let mut world = World::new();
         // Spawn entity with only PhysicsBody, no Transform4D
-        let _entity = world.ecs_mut_unchecked().spawn((
-            PhysicsBody(crate::BodyKey::default()),
-        ));
+        let _entity = world
+            .ecs_mut_unchecked()
+            .spawn((PhysicsBody(crate::BodyKey::default()),));
 
         let warnings = world.validate_component_schemas();
         assert!(
-            warnings.iter().any(|w| w.contains("PhysicsBody but no Transform4D")),
-            "Should detect PhysicsBody without Transform4D; got: {:?}", warnings
+            warnings
+                .iter()
+                .any(|w| w.contains("PhysicsBody but no Transform4D")),
+            "Should detect PhysicsBody without Transform4D; got: {:?}",
+            warnings
         );
     }
 
@@ -1911,12 +1975,17 @@ mod tests {
         let child = spawn_test_entity(&mut world);
 
         // Manually add child to parent's Children without setting Parent on child
-        let _ = world.ecs_mut_unchecked().insert_one(parent, Children(vec![child]));
+        let _ = world
+            .ecs_mut_unchecked()
+            .insert_one(parent, Children(vec![child]));
 
         let warnings = world.validate_component_schemas();
         assert!(
-            warnings.iter().any(|w| w.contains("lacks a Parent component")),
-            "Should detect child without Parent; got: {:?}", warnings
+            warnings
+                .iter()
+                .any(|w| w.contains("lacks a Parent component")),
+            "Should detect child without Parent; got: {:?}",
+            warnings
         );
     }
 
@@ -1930,8 +1999,8 @@ mod tests {
         let warnings = world.validate_component_schemas();
         assert!(
             warnings.is_empty(),
-            "Valid world should have no schema warnings; got: {:?}", warnings
+            "Valid world should have no schema warnings; got: {:?}",
+            warnings
         );
     }
-
 }

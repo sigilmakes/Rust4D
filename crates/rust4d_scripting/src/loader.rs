@@ -1,7 +1,7 @@
 //! Script loading and require() resolution
 
-use mlua::prelude::*;
 use crate::error::ScriptError;
+use mlua::prelude::*;
 
 /// Load the game's main.lua entry point and execute it.
 ///

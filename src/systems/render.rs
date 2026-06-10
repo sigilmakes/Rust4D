@@ -5,15 +5,15 @@
 //! - Slice and render pipelines
 //! - Frame rendering
 
-use std::sync::Arc;
-use winit::window::Window;
+use crate::config::{CameraConfig, RenderingConfig};
 use rust4d_render::{
-    context::RenderContext,
     camera4d::Camera4D,
+    context::RenderContext,
     pipeline::{perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline},
     RenderableGeometry,
 };
-use crate::config::{CameraConfig, RenderingConfig};
+use std::sync::Arc;
+use winit::window::Window;
 
 /// Render error types
 #[derive(Debug)]
@@ -57,10 +57,8 @@ impl RenderSystem {
     ) -> Self {
         let context = pollster::block_on(RenderContext::with_vsync(window, vsync));
 
-        let slice_pipeline = SlicePipeline::new(
-            &context.device,
-            render_config.max_triangles as usize,
-        );
+        let slice_pipeline =
+            SlicePipeline::new(&context.device, render_config.max_triangles as usize);
 
         let mut render_pipeline = RenderPipeline::new(&context.device, context.config.format);
 
@@ -84,7 +82,8 @@ impl RenderSystem {
     pub fn resize(&mut self, width: u32, height: u32) {
         self.context
             .resize(winit::dpi::PhysicalSize::new(width, height));
-        self.render_pipeline.ensure_depth_texture(&self.context.device, width, height);
+        self.render_pipeline
+            .ensure_depth_texture(&self.context.device, width, height);
     }
 
     /// Upload geometry to GPU
@@ -149,6 +148,7 @@ impl RenderSystem {
             diffuse_strength: self.render_config.diffuse_strength,
             w_color_strength: self.render_config.w_color_strength,
             w_range: self.render_config.w_range,
+            ..RenderUniforms::default()
         };
         self.render_pipeline
             .update_uniforms(&self.context.queue, &render_uniforms);
@@ -166,12 +166,12 @@ impl RenderSystem {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create command encoder
-        let mut encoder = self
-            .context
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
+        let mut encoder =
+            self.context
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                });
 
         // Reset counter and run compute pass
         self.slice_pipeline.reset_counter(&self.context.queue);

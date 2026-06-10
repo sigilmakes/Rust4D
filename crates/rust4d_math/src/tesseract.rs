@@ -5,7 +5,10 @@
 //!
 //! For cross-section rendering, we decompose it into tetrahedra (3-simplices).
 
-use crate::{Vec4, shape::{ConvexShape4D, Tetrahedron}};
+use crate::{
+    shape::{ConvexShape4D, Tetrahedron},
+    Vec4,
+};
 use std::collections::HashSet;
 
 /// A tesseract (4D hypercube) - pure geometry without colors
@@ -31,21 +34,21 @@ impl Tesseract4D {
         // Using binary counting: vertex i has coordinates based on bits of i
         let vertices = [
             Vec4::new(-h, -h, -h, -h), // 0  = 0b0000
-            Vec4::new( h, -h, -h, -h), // 1  = 0b0001
-            Vec4::new(-h,  h, -h, -h), // 2  = 0b0010
-            Vec4::new( h,  h, -h, -h), // 3  = 0b0011
-            Vec4::new(-h, -h,  h, -h), // 4  = 0b0100
-            Vec4::new( h, -h,  h, -h), // 5  = 0b0101
-            Vec4::new(-h,  h,  h, -h), // 6  = 0b0110
-            Vec4::new( h,  h,  h, -h), // 7  = 0b0111
-            Vec4::new(-h, -h, -h,  h), // 8  = 0b1000
-            Vec4::new( h, -h, -h,  h), // 9  = 0b1001
-            Vec4::new(-h,  h, -h,  h), // 10 = 0b1010
-            Vec4::new( h,  h, -h,  h), // 11 = 0b1011
-            Vec4::new(-h, -h,  h,  h), // 12 = 0b1100
-            Vec4::new( h, -h,  h,  h), // 13 = 0b1101
-            Vec4::new(-h,  h,  h,  h), // 14 = 0b1110
-            Vec4::new( h,  h,  h,  h), // 15 = 0b1111
+            Vec4::new(h, -h, -h, -h),  // 1  = 0b0001
+            Vec4::new(-h, h, -h, -h),  // 2  = 0b0010
+            Vec4::new(h, h, -h, -h),   // 3  = 0b0011
+            Vec4::new(-h, -h, h, -h),  // 4  = 0b0100
+            Vec4::new(h, -h, h, -h),   // 5  = 0b0101
+            Vec4::new(-h, h, h, -h),   // 6  = 0b0110
+            Vec4::new(h, h, h, -h),    // 7  = 0b0111
+            Vec4::new(-h, -h, -h, h),  // 8  = 0b1000
+            Vec4::new(h, -h, -h, h),   // 9  = 0b1001
+            Vec4::new(-h, h, -h, h),   // 10 = 0b1010
+            Vec4::new(h, h, -h, h),    // 11 = 0b1011
+            Vec4::new(-h, -h, h, h),   // 12 = 0b1100
+            Vec4::new(h, -h, h, h),    // 13 = 0b1101
+            Vec4::new(-h, h, h, h),    // 14 = 0b1110
+            Vec4::new(h, h, h, h),     // 15 = 0b1111
         ];
 
         // Compute tetrahedra decomposition using Kuhn triangulation
@@ -81,18 +84,51 @@ impl Tesseract4D {
         ]
     }
 
-    /// Compute the tetrahedra decomposition using Kuhn triangulation
+    /// Compute the boundary tetrahedra using Kuhn triangulation
     ///
-    /// The Kuhn triangulation decomposes the hypercube into 24 5-cells (simplices),
-    /// each defined by a permutation of dimensions. We then decompose each 5-cell
-    /// into 5 tetrahedra by omitting each vertex in turn.
+    /// The Kuhn triangulation decomposes the solid hypercube into 24 5-cells
+    /// (one per permutation of the four axes). Taking every tetrahedral face
+    /// of every 5-cell yields 84 distinct tetrahedra — but only the ones
+    /// lying on the tesseract's **boundary** (its eight cubic facets) matter
+    /// for slicing; the rest are internal membranes that waste GPU work and
+    /// would render as spurious interior walls if the camera entered the
+    /// shape.
+    ///
+    /// A tetrahedron lies on a facet exactly when its four vertices agree on
+    /// one coordinate — with bitmask vertex indices, when all four indices
+    /// share a bit value. Filtering leaves the 48 boundary tetrahedra
+    /// (8 cubic facets × 6 Kuhn tetrahedra), and because each facet's
+    /// triangulation is induced by the same solid Kuhn triangulation,
+    /// adjacent facets agree on shared face diagonals: the result is a
+    /// closed, watertight 3-manifold (pinned by `Mesh4D::is_watertight`
+    /// tests).
     fn compute_tetrahedra() -> Vec<Tetrahedron> {
         // Generate all permutations of [0, 1, 2, 3] for Kuhn triangulation
         let permutations = [
-            [0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3], [0, 2, 3, 1], [0, 3, 1, 2], [0, 3, 2, 1],
-            [1, 0, 2, 3], [1, 0, 3, 2], [1, 2, 0, 3], [1, 2, 3, 0], [1, 3, 0, 2], [1, 3, 2, 0],
-            [2, 0, 1, 3], [2, 0, 3, 1], [2, 1, 0, 3], [2, 1, 3, 0], [2, 3, 0, 1], [2, 3, 1, 0],
-            [3, 0, 1, 2], [3, 0, 2, 1], [3, 1, 0, 2], [3, 1, 2, 0], [3, 2, 0, 1], [3, 2, 1, 0],
+            [0, 1, 2, 3],
+            [0, 1, 3, 2],
+            [0, 2, 1, 3],
+            [0, 2, 3, 1],
+            [0, 3, 1, 2],
+            [0, 3, 2, 1],
+            [1, 0, 2, 3],
+            [1, 0, 3, 2],
+            [1, 2, 0, 3],
+            [1, 2, 3, 0],
+            [1, 3, 0, 2],
+            [1, 3, 2, 0],
+            [2, 0, 1, 3],
+            [2, 0, 3, 1],
+            [2, 1, 0, 3],
+            [2, 1, 3, 0],
+            [2, 3, 0, 1],
+            [2, 3, 1, 0],
+            [3, 0, 1, 2],
+            [3, 0, 2, 1],
+            [3, 1, 0, 2],
+            [3, 1, 2, 0],
+            [3, 2, 0, 1],
+            [3, 2, 1, 0],
         ];
 
         // Generate 5-cells from permutations
@@ -130,7 +166,14 @@ impl Tesseract4D {
                 canonical.sort();
 
                 if seen.insert(canonical) {
-                    tetrahedra.push(Tetrahedron::new(tet_verts));
+                    // Keep only boundary tetrahedra: all four vertex-index
+                    // bitmasks agree on at least one axis bit.
+                    let all_and = tet_verts.iter().fold(0b1111, |acc, &v| acc & v);
+                    let all_or = tet_verts.iter().fold(0, |acc, &v| acc | v);
+                    let on_boundary = all_and != 0 || all_or != 0b1111;
+                    if on_boundary {
+                        tetrahedra.push(Tetrahedron::new(tet_verts));
+                    }
                 }
             }
         }
@@ -162,9 +205,38 @@ mod tests {
     #[test]
     fn test_tesseract_tetrahedron_count() {
         let t = Tesseract4D::new(2.0);
-        // Should have some reasonable number of tetrahedra
-        assert!(!t.tetrahedra().is_empty());
-        assert!(t.tetrahedra().len() <= 120); // Max: 24 * 5 before deduplication
+        // Exactly the boundary: 8 cubic facets × 6 Kuhn tetrahedra.
+        assert_eq!(t.tetrahedra().len(), 48);
+    }
+
+    #[test]
+    fn test_tesseract_tetrahedra_lie_on_facets() {
+        // Every tetrahedron's four vertices must share a fixed coordinate
+        // (±h on some axis) — i.e. lie on one of the 8 cubic facets.
+        let t = Tesseract4D::new(2.0);
+        for tet in t.tetrahedra() {
+            let verts = tet.indices.map(|i| t.vertices()[i]);
+            let on_facet = (0..4).any(|axis| {
+                let c = |v: &Vec4| match axis {
+                    0 => v.x,
+                    1 => v.y,
+                    2 => v.z,
+                    _ => v.w,
+                };
+                verts.iter().all(|v| c(v) == c(&verts[0]))
+            });
+            assert!(on_facet, "tet {:?} is not on a facet", tet.indices);
+        }
+    }
+
+    #[test]
+    fn test_tesseract_boundary_volume() {
+        // Boundary 3-volume of a tesseract with side s: 8 cubic cells of
+        // volume s³.
+        use crate::Mesh4D;
+        let t = Tesseract4D::new(2.0);
+        let m: Mesh4D = (&t as &dyn crate::ConvexShape4D).into();
+        assert!((m.surface_volume() - 8.0 * 8.0).abs() < 1e-4);
     }
 
     #[test]
@@ -211,7 +283,7 @@ mod tests {
         let mut tet_edges: HashSet<(usize, usize)> = HashSet::new();
         for tet in t.tetrahedra() {
             for i in 0..4 {
-                for j in (i+1)..4 {
+                for j in (i + 1)..4 {
                     let (v0, v1) = if tet.indices[i] < tet.indices[j] {
                         (tet.indices[i], tet.indices[j])
                     } else {
@@ -224,11 +296,15 @@ mod tests {
 
         // Check that all tesseract edges are covered
         for i in 0usize..16 {
-            for j in (i+1)..16 {
+            for j in (i + 1)..16 {
                 if (i ^ j).count_ones() == 1 {
                     // This is a tesseract edge
-                    assert!(tet_edges.contains(&(i, j)),
-                        "Tesseract edge ({}, {}) not in any tetrahedron", i, j);
+                    assert!(
+                        tet_edges.contains(&(i, j)),
+                        "Tesseract edge ({}, {}) not in any tetrahedron",
+                        i,
+                        j
+                    );
                 }
             }
         }

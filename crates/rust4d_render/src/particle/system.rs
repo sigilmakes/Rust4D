@@ -21,9 +21,9 @@
 //! If the particle system grows to manage thousands of emitters with frequent churn, consider
 //! migrating to `slotmap` for its generational indices (which detect use-after-free).
 
+use super::emitter::{spawn_burst, ParticleEmitter};
+use super::types::{BurstConfig, EmitterConfig, Particle};
 use rust4d_math::Vec4;
-use super::emitter::{ParticleEmitter, spawn_burst};
-use super::types::{Particle, BurstConfig, EmitterConfig};
 
 /// The main particle system that manages all particles and emitters
 ///
@@ -190,7 +190,7 @@ impl Default for ParticleSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_system_creation() {
         let system = ParticleSystem::new();

@@ -6,8 +6,7 @@
 use wgpu::util::DeviceExt;
 
 use super::types::{
-    SliceParams, Vertex3D, Vertex4D, GpuTetrahedron, AtomicCounter,
-    TRIANGLE_VERTEX_COUNT,
+    AtomicCounter, GpuTetrahedron, SliceParams, Vertex3D, Vertex4D, TRIANGLE_VERTEX_COUNT,
 };
 
 /// Compute pipeline for slicing 4D geometry
@@ -143,11 +142,14 @@ impl SlicePipeline {
         });
 
         // Create output buffer sized by max_triangles parameter
-        let output_size = (max_triangles * TRIANGLE_VERTEX_COUNT * std::mem::size_of::<Vertex3D>()) as u64;
+        let output_size =
+            (max_triangles * TRIANGLE_VERTEX_COUNT * std::mem::size_of::<Vertex3D>()) as u64;
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Slice Output Buffer"),
             size: output_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::VERTEX
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
@@ -155,7 +157,10 @@ impl SlicePipeline {
         let counter_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Slice Counter Buffer"),
             size: std::mem::size_of::<AtomicCounter>() as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::INDIRECT,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::INDIRECT,
             mapped_at_creation: false,
         });
 
@@ -181,22 +186,31 @@ impl SlicePipeline {
     }
 
     /// Upload tetrahedra and vertices to the GPU
-    pub fn upload_tetrahedra(&mut self, device: &wgpu::Device, vertices: &[Vertex4D], tetrahedra: &[GpuTetrahedron]) {
+    pub fn upload_tetrahedra(
+        &mut self,
+        device: &wgpu::Device,
+        vertices: &[Vertex4D],
+        tetrahedra: &[GpuTetrahedron],
+    ) {
         self.tetra_count = tetrahedra.len() as u32;
 
         // Create vertex buffer
-        self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(vertices),
-            usage: wgpu::BufferUsages::STORAGE,
-        }));
+        self.vertex_buffer = Some(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(vertices),
+                usage: wgpu::BufferUsages::STORAGE,
+            }),
+        );
 
         // Create tetrahedra buffer
-        self.tetra_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Tetrahedra Buffer"),
-            contents: bytemuck::cast_slice(tetrahedra),
-            usage: wgpu::BufferUsages::STORAGE,
-        }));
+        self.tetra_buffer = Some(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Tetrahedra Buffer"),
+                contents: bytemuck::cast_slice(tetrahedra),
+                usage: wgpu::BufferUsages::STORAGE,
+            }),
+        );
 
         // Recreate bind group
         self.bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {

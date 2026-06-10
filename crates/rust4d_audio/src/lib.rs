@@ -91,7 +91,9 @@ impl AudioEngine4D {
     /// Create a new audio engine
     pub fn new() -> Result<Self, AudioError> {
         let manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
-            .map_err(|e: kira::manager::backend::cpal::Error| AudioError::ManagerInit(e.to_string()))?;
+            .map_err(|e: kira::manager::backend::cpal::Error| {
+                AudioError::ManagerInit(e.to_string())
+            })?;
 
         let mut engine = Self {
             manager,
@@ -151,11 +153,10 @@ impl AudioEngine4D {
     /// Returns `AudioError::SoundIdOverflow` if the maximum number of sounds
     /// (2^64) has been reached. In practice this is unreachable.
     pub fn load_sound(&mut self, path: &str) -> Result<SoundHandle, AudioError> {
-        let sound_data = StaticSoundData::from_file(path)
-            .map_err(|e| AudioError::LoadSound {
-                path: path.to_string(),
-                message: e.to_string(),
-            })?;
+        let sound_data = StaticSoundData::from_file(path).map_err(|e| AudioError::LoadSound {
+            path: path.to_string(),
+            message: e.to_string(),
+        })?;
 
         let id = self.next_sound_id;
         self.next_sound_id = self
@@ -183,15 +184,13 @@ impl AudioEngine4D {
         let settings = StaticSoundSettings::new().output_destination(track);
         let sound_with_settings = sound_data.with_settings(settings);
 
-        let handle = self.manager
+        let handle = self
+            .manager
             .play(sound_with_settings)
             .map_err(|e| AudioError::PlaySound(e.to_string()))?;
 
         // Track the sound handle for stop_all/stop_bus support
-        self.active_sounds
-            .entry(bus)
-            .or_default()
-            .push(handle);
+        self.active_sounds.entry(bus).or_default().push(handle);
 
         Ok(())
     }
@@ -232,15 +231,13 @@ impl AudioEngine4D {
 
         let sound_with_settings = sound_data.with_settings(settings);
 
-        let handle = self.manager
+        let handle = self
+            .manager
             .play(sound_with_settings)
             .map_err(|e| AudioError::PlaySound(e.to_string()))?;
 
         // Track the sound handle for stop_all/stop_bus support
-        self.active_sounds
-            .entry(bus)
-            .or_default()
-            .push(handle);
+        self.active_sounds.entry(bus).or_default().push(handle);
 
         log::trace!(
             "Playing spatial sound at {:?}, volume: {:.2}, panning: {:.2}",
@@ -266,7 +263,10 @@ impl AudioEngine4D {
     /// Set the volume of a specific bus
     pub fn set_bus_volume(&mut self, bus: AudioBus, volume: f32) {
         if let Some(track) = self.bus_tracks.get_mut(&bus) {
-            track.set_volume(Volume::Amplitude(volume.clamp(0.0, 1.0) as f64), Tween::default());
+            track.set_volume(
+                Volume::Amplitude(volume.clamp(0.0, 1.0) as f64),
+                Tween::default(),
+            );
             log::debug!("Set {:?} bus volume to {:.2}", bus, volume);
         }
     }

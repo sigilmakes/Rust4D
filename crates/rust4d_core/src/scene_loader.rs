@@ -5,7 +5,7 @@
 //! and returns results via a channel, enabling non-blocking scene loading.
 
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Sender, Receiver, TryRecvError};
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread;
 
 use crate::scene::{Scene, SceneError};

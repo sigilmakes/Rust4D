@@ -2,8 +2,6 @@
 //!
 //! A 4D rendering engine that displays 3D cross-sections of 4D geometry.
 
-
-
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, DeviceId, WindowEvent},
@@ -12,14 +10,14 @@ use winit::{
     window::WindowId,
 };
 
-use rust4d::input::{InputMapper, InputAction};
+use rust4d::input::{InputAction, InputMapper};
 use rust4d::systems::{build_geometry, RenderError, RenderSystem, SimulationSystem, WindowSystem};
 
 use rust4d_core::SceneManager;
-use rust4d_game::{CharacterController4D, CharacterConfig, scene_helpers};
-use rust4d_render::{camera4d::Camera4D, RenderableGeometry};
+use rust4d_game::{scene_helpers, CharacterConfig, CharacterController4D};
 use rust4d_input::CameraController;
 use rust4d_math::Vec4;
+use rust4d_render::{camera4d::Camera4D, RenderableGeometry};
 
 use rust4d::config::AppConfig;
 
@@ -53,19 +51,22 @@ impl App {
 
         // Create scene manager and load scene from file
         // Pass physics config from TOML to the physics engine
-        let mut scene_manager = SceneManager::new()
-            .with_physics(config.physics.to_physics_config());
+        let mut scene_manager =
+            SceneManager::new().with_physics(config.physics.to_physics_config());
 
         // Load scene from configured path
-        let scene_name = scene_manager.load_scene(&config.scene.path)
+        let scene_name = scene_manager
+            .load_scene(&config.scene.path)
             .unwrap_or_else(|e| {
                 panic!("Failed to load scene '{}': {}", config.scene.path, e);
             });
 
         // Instantiate and activate the scene
-        scene_manager.instantiate(&scene_name)
+        scene_manager
+            .instantiate(&scene_name)
             .unwrap_or_else(|e| panic!("Failed to instantiate scene: {}", e));
-        scene_manager.push_scene(&scene_name)
+        scene_manager
+            .push_scene(&scene_name)
             .unwrap_or_else(|e| panic!("Failed to push scene: {}", e));
 
         // Create player body from scene spawn point using scene_helpers
@@ -85,24 +86,35 @@ impl App {
         }
 
         // Get player start from scene's player_spawn
-        let player_start = scene_manager.active_scene()
+        let player_start = scene_manager
+            .active_scene()
             .and_then(|s| s.player_spawn)
             .map(|spawn| Vec4::new(spawn[0], spawn[1], spawn[2], spawn[3]))
-            .unwrap_or_else(|| Vec4::new(
-                config.camera.start_position[0],
-                config.camera.start_position[1],
-                config.camera.start_position[2],
-                config.camera.start_position[3],
-            ));
+            .unwrap_or_else(|| {
+                Vec4::new(
+                    config.camera.start_position[0],
+                    config.camera.start_position[1],
+                    config.camera.start_position[2],
+                    config.camera.start_position[3],
+                )
+            });
 
         // Build GPU geometry from the world
         let geometry = build_geometry(scene_manager.active_world().unwrap());
 
-        log::info!("Loaded scene '{}' with {} entities",
+        log::info!(
+            "Loaded scene '{}' with {} entities",
             scene_name,
-            scene_manager.active_world().map(|w| w.entity_count()).unwrap_or(0));
-        log::info!("Total geometry: {} vertices, {} tetrahedra",
-            geometry.vertex_count(), geometry.tetrahedron_count());
+            scene_manager
+                .active_world()
+                .map(|w| w.entity_count())
+                .unwrap_or(0)
+        );
+        log::info!(
+            "Total geometry: {} vertices, {} tetrahedra",
+            geometry.vertex_count(),
+            geometry.tetrahedron_count()
+        );
 
         // Set camera with configured pitch limit and player start position
         let mut camera = Camera4D::with_pitch_limit(config.camera.pitch_limit.to_radians());
@@ -122,11 +134,14 @@ impl App {
             .active_scene()
             .and_then(|s| s.player_body_key)
             .map(|key| {
-                CharacterController4D::new(key, CharacterConfig {
-                    move_speed: config.input.move_speed,
-                    w_move_speed: config.input.w_move_speed,
-                    jump_velocity: config.physics.jump_velocity,
-                })
+                CharacterController4D::new(
+                    key,
+                    CharacterConfig {
+                        move_speed: config.input.move_speed,
+                        w_move_speed: config.input.w_move_speed,
+                        jump_velocity: config.physics.jump_velocity,
+                    },
+                )
             });
 
         Self {
@@ -141,7 +156,6 @@ impl App {
             simulation: SimulationSystem::new(),
         }
     }
-
 }
 
 impl ApplicationHandler for App {
@@ -182,11 +196,15 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(key) = event.physical_key {
                     // Map to action via InputMapper
-                    let cursor_captured = self.window_system.as_ref()
+                    let cursor_captured = self
+                        .window_system
+                        .as_ref()
                         .map(|ws| ws.is_cursor_captured())
                         .unwrap_or(false);
 
-                    if let Some(action) = InputMapper::map_keyboard(key, event.state, cursor_captured) {
+                    if let Some(action) =
+                        InputMapper::map_keyboard(key, event.state, cursor_captured)
+                    {
                         match action {
                             InputAction::ToggleCursor => {
                                 if let Some(ws) = &mut self.window_system {
@@ -207,7 +225,10 @@ impl ApplicationHandler for App {
                             }
                             InputAction::ToggleSmoothing => {
                                 let enabled = self.controller.toggle_smoothing();
-                                log::info!("Input smoothing: {}", if enabled { "ON" } else { "OFF" });
+                                log::info!(
+                                    "Input smoothing: {}",
+                                    if enabled { "ON" } else { "OFF" }
+                                );
                             }
                         }
                         return;
@@ -220,11 +241,14 @@ impl ApplicationHandler for App {
 
             WindowEvent::MouseInput { state, button, .. } => {
                 // Map to action via InputMapper
-                let cursor_captured = self.window_system.as_ref()
+                let cursor_captured = self
+                    .window_system
+                    .as_ref()
                     .map(|ws| ws.is_cursor_captured())
                     .unwrap_or(false);
 
-                if let Some(action) = InputMapper::map_mouse_button(button, state, cursor_captured) {
+                if let Some(action) = InputMapper::map_mouse_button(button, state, cursor_captured)
+                {
                     if action == InputAction::ToggleCursor {
                         if let Some(ws) = &mut self.window_system {
                             ws.capture_cursor();
@@ -245,7 +269,9 @@ impl ApplicationHandler for App {
 
             WindowEvent::RedrawRequested => {
                 // Run simulation
-                let cursor_captured = self.window_system.as_ref()
+                let cursor_captured = self
+                    .window_system
+                    .as_ref()
                     .map(|ws| ws.is_cursor_captured())
                     .unwrap_or(false);
 

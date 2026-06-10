@@ -186,7 +186,11 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
             let bus_name = validate_bus_name(&bus)?;
             // STUB: Log warning
             // Real implementation would call engine.play(&handle, bus)
-            log::trace!("[audio] play(handle={}, bus='{}') - stub", handle.id, bus_name);
+            log::trace!(
+                "[audio] play(handle={}, bus='{}') - stub",
+                handle.id,
+                bus_name
+            );
             Ok(())
         })?,
     )?;
@@ -203,7 +207,11 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         "play_oneshot",
         lua.create_function(|_, (handle, bus): (LuaSoundHandle, String)| {
             let bus_name = validate_bus_name(&bus)?;
-            log::trace!("[audio] play_oneshot(handle={}, bus='{}') - stub", handle.id, bus_name);
+            log::trace!(
+                "[audio] play_oneshot(handle={}, bus='{}') - stub",
+                handle.id,
+                bus_name
+            );
             Ok(())
         })?,
     )?;
@@ -289,7 +297,11 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
                 );
             }
 
-            log::trace!("[audio] set_volume(bus='{}', volume={:.2}) - stub", bus_name, clamped);
+            log::trace!(
+                "[audio] set_volume(bus='{}', volume={:.2}) - stub",
+                bus_name,
+                clamped
+            );
             Ok(())
         })?,
     )?;
@@ -332,7 +344,10 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         lua.create_function(|_, pos: LuaVec4| {
             log::trace!(
                 "[audio] update_listener(pos=({:.2}, {:.2}, {:.2}, {:.2})) - stub",
-                pos.0.x, pos.0.y, pos.0.z, pos.0.w
+                pos.0.x,
+                pos.0.y,
+                pos.0.z,
+                pos.0.w
             );
             Ok(())
         })?,

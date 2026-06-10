@@ -151,10 +151,7 @@ impl AssetCache {
 
         // Check if already cached (deduplication by path)
         if let Some(&id) = self.path_index.get(&path) {
-            return Ok(AssetHandle {
-                id,
-                path,
-            });
+            return Ok(AssetHandle { id, path });
         }
 
         // Load from file
@@ -280,11 +277,7 @@ impl AssetCache {
                         log::info!("Hot-reloaded asset: {}", path.display());
                     }
                     Err(err) => {
-                        log::warn!(
-                            "Failed to hot-reload asset {}: {}",
-                            path.display(),
-                            err
-                        );
+                        log::warn!("Failed to hot-reload asset {}: {}", path.display(), err);
                     }
                 }
             }

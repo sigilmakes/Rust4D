@@ -4,13 +4,13 @@
 //! The Entity struct has been removed -- entities are now spawned directly as
 //! ECS component tuples via `world.spawn(...)` or `EntityTemplate::spawn_in(...)`.
 
-use std::collections::HashSet;
-use std::sync::Arc;
+use crate::shapes::ShapeTemplate;
+use crate::Transform4D;
 use bitflags::bitflags;
 use rust4d_math::ConvexShape4D;
-use serde::{Serialize, Deserialize};
-use crate::Transform4D;
-use crate::shapes::ShapeTemplate;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::Arc;
 
 bitflags! {
     /// Flags indicating which parts of an entity have changed and need updating
@@ -63,19 +63,29 @@ impl Material {
     }
 
     /// White material
-    pub const WHITE: Self = Self { base_color: [1.0, 1.0, 1.0, 1.0] };
+    pub const WHITE: Self = Self {
+        base_color: [1.0, 1.0, 1.0, 1.0],
+    };
 
     /// Gray material
-    pub const GRAY: Self = Self { base_color: [0.5, 0.5, 0.5, 1.0] };
+    pub const GRAY: Self = Self {
+        base_color: [0.5, 0.5, 0.5, 1.0],
+    };
 
     /// Red material
-    pub const RED: Self = Self { base_color: [1.0, 0.0, 0.0, 1.0] };
+    pub const RED: Self = Self {
+        base_color: [1.0, 0.0, 0.0, 1.0],
+    };
 
     /// Green material
-    pub const GREEN: Self = Self { base_color: [0.0, 1.0, 0.0, 1.0] };
+    pub const GREEN: Self = Self {
+        base_color: [0.0, 1.0, 0.0, 1.0],
+    };
 
     /// Blue material
-    pub const BLUE: Self = Self { base_color: [0.0, 0.0, 1.0, 1.0] };
+    pub const BLUE: Self = Self {
+        base_color: [0.0, 0.0, 1.0, 1.0],
+    };
 }
 
 /// Reference to a shape - either shared (Arc) or owned (Box)
@@ -259,7 +269,9 @@ mod tests {
             ShapeTemplate::tesseract(2.0),
             Transform4D::from_position(Vec4::new(1.0, 2.0, 3.0, 4.0)),
             Material::RED,
-        ).with_name("my_cube").with_tag("dynamic");
+        )
+        .with_name("my_cube")
+        .with_tag("dynamic");
 
         let mut world = crate::World::new();
         let entity = template.spawn_in(&mut world);

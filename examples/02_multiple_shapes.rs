@@ -19,14 +19,17 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use rust4d_core::{Material, ShapeRef, Tesseract4D, Transform4D, DirtyFlags, World};
+use rust4d_core::{DirtyFlags, Material, ShapeRef, Tesseract4D, Transform4D, World};
+use rust4d_math::Vec4;
 use rust4d_render::{
     camera4d::Camera4D,
     context::RenderContext,
-    pipeline::{perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline, MAX_OUTPUT_TRIANGLES},
+    pipeline::{
+        perspective_matrix, RenderPipeline, RenderUniforms, SliceParams, SlicePipeline,
+        MAX_OUTPUT_TRIANGLES,
+    },
     RenderableGeometry,
 };
-use rust4d_math::Vec4;
 
 /// Movement state
 struct Movement {
@@ -36,15 +39,21 @@ struct Movement {
     right: bool,
     up: bool,
     down: bool,
-    ana: bool,   // Q - move toward +W
-    kata: bool,  // E - move toward -W
+    ana: bool,  // Q - move toward +W
+    kata: bool, // E - move toward -W
 }
 
 impl Movement {
     fn new() -> Self {
         Self {
-            forward: false, backward: false, left: false, right: false,
-            up: false, down: false, ana: false, kata: false,
+            forward: false,
+            backward: false,
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+            ana: false,
+            kata: false,
         }
     }
 }
@@ -69,11 +78,26 @@ impl App {
 
         // Create multiple tesseracts with different colors and positions
         let positions_and_colors = [
-            (Vec4::new(0.0, 0.0, 0.0, 0.0), Material::from_rgb(0.9, 0.3, 0.2)),   // Red at origin
-            (Vec4::new(4.0, 0.0, 0.0, 0.0), Material::from_rgb(0.2, 0.9, 0.3)),   // Green to the right
-            (Vec4::new(-4.0, 0.0, 0.0, 0.0), Material::from_rgb(0.2, 0.3, 0.9)), // Blue to the left
-            (Vec4::new(0.0, 4.0, 0.0, 0.0), Material::from_rgb(0.9, 0.9, 0.2)),  // Yellow above
-            (Vec4::new(0.0, 0.0, 0.0, 4.0), Material::from_rgb(0.9, 0.2, 0.9)),  // Magenta in +W
+            (
+                Vec4::new(0.0, 0.0, 0.0, 0.0),
+                Material::from_rgb(0.9, 0.3, 0.2),
+            ), // Red at origin
+            (
+                Vec4::new(4.0, 0.0, 0.0, 0.0),
+                Material::from_rgb(0.2, 0.9, 0.3),
+            ), // Green to the right
+            (
+                Vec4::new(-4.0, 0.0, 0.0, 0.0),
+                Material::from_rgb(0.2, 0.3, 0.9),
+            ), // Blue to the left
+            (
+                Vec4::new(0.0, 4.0, 0.0, 0.0),
+                Material::from_rgb(0.9, 0.9, 0.2),
+            ), // Yellow above
+            (
+                Vec4::new(0.0, 0.0, 0.0, 4.0),
+                Material::from_rgb(0.9, 0.2, 0.9),
+            ), // Magenta in +W
         ];
 
         for (position, material) in positions_and_colors {
@@ -120,7 +144,8 @@ impl ApplicationHandler for App {
             );
 
             let render_context = pollster::block_on(RenderContext::new(window.clone()));
-            let mut slice_pipeline = SlicePipeline::new(&render_context.device, MAX_OUTPUT_TRIANGLES);
+            let mut slice_pipeline =
+                SlicePipeline::new(&render_context.device, MAX_OUTPUT_TRIANGLES);
             let mut render_pipeline =
                 RenderPipeline::new(&render_context.device, render_context.config.format);
 
@@ -187,7 +212,8 @@ impl ApplicationHandler for App {
                 let up = (self.movement.up as i32 - self.movement.down as i32) as f32;
                 let w = (self.movement.ana as i32 - self.movement.kata as i32) as f32;
 
-                self.camera.move_local_xz(forward * speed * dt, right * speed * dt);
+                self.camera
+                    .move_local_xz(forward * speed * dt, right * speed * dt);
                 self.camera.move_y(up * speed * dt);
                 self.camera.move_w(w * speed * dt);
 
@@ -208,10 +234,17 @@ impl ApplicationHandler for App {
                     sp.update_params(&ctx.queue, &slice_params);
 
                     let render_uniforms = RenderUniforms {
-                        view_matrix: [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
-                                      [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+                        view_matrix: [
+                            [1.0, 0.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0],
+                        ],
                         projection_matrix: perspective_matrix(
-                            std::f32::consts::FRAC_PI_4, ctx.aspect_ratio(), 0.1, 100.0,
+                            std::f32::consts::FRAC_PI_4,
+                            ctx.aspect_ratio(),
+                            0.1,
+                            100.0,
                         ),
                         light_dir: [0.5, 1.0, 0.3],
                         _padding: 0.0,
@@ -219,6 +252,7 @@ impl ApplicationHandler for App {
                         diffuse_strength: 0.7,
                         w_color_strength: 0.5,
                         w_range: 2.0,
+                        ..RenderUniforms::default()
                     };
                     rp.update_uniforms(&ctx.queue, &render_uniforms);
 
@@ -226,16 +260,27 @@ impl ApplicationHandler for App {
                         Ok(o) => o,
                         Err(_) => return,
                     };
-                    let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    let mut encoder = ctx.device.create_command_encoder(
-                        &wgpu::CommandEncoderDescriptor { label: None },
-                    );
+                    let view = output
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
+                    let mut encoder = ctx
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
                     sp.reset_counter(&ctx.queue);
                     sp.run_slice_pass(&mut encoder);
                     rp.prepare_indirect_draw(&mut encoder, sp.counter_buffer());
-                    rp.render(&mut encoder, &view, sp.output_buffer(),
-                        wgpu::Color { r: 0.02, g: 0.02, b: 0.08, a: 1.0 });
+                    rp.render(
+                        &mut encoder,
+                        &view,
+                        sp.output_buffer(),
+                        wgpu::Color {
+                            r: 0.02,
+                            g: 0.02,
+                            b: 0.08,
+                            a: 1.0,
+                        },
+                    );
 
                     ctx.queue.submit(std::iter::once(encoder.finish()));
                     output.present();

@@ -124,22 +124,24 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     // - color: RGBA color table {r, g, b, a} or {1, 2, 3, 4}
     hud_table.set(
         "text",
-        lua.create_function(|_, (x, y, text, size, color): (f32, f32, String, f32, LuaTable)| {
-            let color = table_to_color(&color)?;
-            // STUB: Log at trace level (LOW-6 - called every frame)
-            // Real implementation would:
-            // 1. Get HudContext from lua.app_data()
-            // 2. Call hud.text([x, y], &text, size, color)
-            log::trace!(
-                "[hud] text at ({}, {}): '{}' size={} color={:?}",
-                x,
-                y,
-                text,
-                size,
-                color
-            );
-            Ok(())
-        })?,
+        lua.create_function(
+            |_, (x, y, text, size, color): (f32, f32, String, f32, LuaTable)| {
+                let color = table_to_color(&color)?;
+                // STUB: Log at trace level (LOW-6 - called every frame)
+                // Real implementation would:
+                // 1. Get HudContext from lua.app_data()
+                // 2. Call hud.text([x, y], &text, size, color)
+                log::trace!(
+                    "[hud] text at ({}, {}): '{}' size={} color={:?}",
+                    x,
+                    y,
+                    text,
+                    size,
+                    color
+                );
+                Ok(())
+            },
+        )?,
     )?;
 
     // hud.text_centered(x, y, text, size, color)
@@ -154,18 +156,20 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     // - color: RGBA color table {r, g, b, a} or {1, 2, 3, 4}
     hud_table.set(
         "text_centered",
-        lua.create_function(|_, (x, y, text, size, color): (f32, f32, String, f32, LuaTable)| {
-            let color = table_to_color(&color)?;
-            log::trace!(
-                "[hud] text_centered at ({}, {}): '{}' size={} color={:?}",
-                x,
-                y,
-                text,
-                size,
-                color
-            );
-            Ok(())
-        })?,
+        lua.create_function(
+            |_, (x, y, text, size, color): (f32, f32, String, f32, LuaTable)| {
+                let color = table_to_color(&color)?;
+                log::trace!(
+                    "[hud] text_centered at ({}, {}): '{}' size={} color={:?}",
+                    x,
+                    y,
+                    text,
+                    size,
+                    color
+                );
+                Ok(())
+            },
+        )?,
     )?;
 
     // hud.rect(x, y, width, height, color)
@@ -365,7 +369,11 @@ fn table_to_color(table: &LuaTable) -> LuaResult<[f32; 4]> {
             log::warn!(
                 "[hud] Color table using named format but missing component(s): {:?}. \
                  Typo? Got r={}, g={}, b={}, a={}. Missing components default to 0.0.",
-                missing, r, g, b, a
+                missing,
+                r,
+                g,
+                b,
+                a
             );
         }
 
@@ -393,10 +401,7 @@ mod tests {
     #[test]
     fn test_hud_table_exists() {
         let lua = create_lua_with_hud();
-        let hud: LuaTable = lua
-            .globals()
-            .get("hud")
-            .expect("hud table should exist");
+        let hud: LuaTable = lua.globals().get("hud").expect("hud table should exist");
         assert!(hud.contains_key("text").unwrap());
         assert!(hud.contains_key("text_centered").unwrap());
         assert!(hud.contains_key("rect").unwrap());
@@ -538,7 +543,10 @@ mod tests {
         // No alpha specified
 
         let color = table_to_color(&table).unwrap();
-        assert!((color[3] - 1.0).abs() < 0.001, "Default alpha should be 1.0");
+        assert!(
+            (color[3] - 1.0).abs() < 0.001,
+            "Default alpha should be 1.0"
+        );
     }
 
     #[test]
@@ -550,9 +558,18 @@ mod tests {
 
         let color = table_to_color(&table).unwrap();
         assert!((color[0] - 1.0).abs() < 0.001);
-        assert!((color[1] - 0.0).abs() < 0.001, "Missing g should default to 0.0");
-        assert!((color[2] - 0.0).abs() < 0.001, "Missing b should default to 0.0");
-        assert!((color[3] - 1.0).abs() < 0.001, "Missing a should default to 1.0");
+        assert!(
+            (color[1] - 0.0).abs() < 0.001,
+            "Missing g should default to 0.0"
+        );
+        assert!(
+            (color[2] - 0.0).abs() < 0.001,
+            "Missing b should default to 0.0"
+        );
+        assert!(
+            (color[3] - 1.0).abs() < 0.001,
+            "Missing a should default to 1.0"
+        );
     }
 
     #[test]

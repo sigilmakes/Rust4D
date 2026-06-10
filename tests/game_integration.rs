@@ -3,10 +3,8 @@
 //! These tests verify the integration between rust4d_game and rust4d_core,
 //! specifically the CharacterController4D working with ActiveScene and scene_helpers.
 
-use rust4d_core::{
-    ActiveScene, Scene, EntityTemplate, Transform4D, Material, ShapeTemplate,
-};
-use rust4d_game::{CharacterController4D, CharacterConfig, scene_helpers};
+use rust4d_core::{ActiveScene, EntityTemplate, Material, Scene, ShapeTemplate, Transform4D};
+use rust4d_game::{scene_helpers, CharacterConfig, CharacterController4D};
 use rust4d_math::Vec4;
 
 /// T1: Integration test between CharacterController4D and ActiveScene
@@ -27,7 +25,7 @@ fn test_character_controller_with_active_scene() {
             Material::GRAY,
         )
         .with_name("floor")
-        .with_tag("static")
+        .with_tag("static"),
     );
 
     // Instantiate scene (player body creation is at the app layer)
@@ -36,22 +34,30 @@ fn test_character_controller_with_active_scene() {
     // Create player body using scene_helpers (the single source of truth)
     let spawn_pos = Vec4::new(0.0, 1.0, 5.0, 0.0);
     let player_key = {
-        let physics = active.world.physics_mut().expect("Scene should have physics");
+        let physics = active
+            .world
+            .physics_mut()
+            .expect("Scene should have physics");
         scene_helpers::create_player_body(physics, spawn_pos, 0.5)
     };
     active.player_body_key = Some(player_key);
 
     // Create CharacterController4D from the player body key
-    let controller = CharacterController4D::new(player_key, CharacterConfig {
-        move_speed: 5.0,
-        w_move_speed: 5.0,
-        jump_velocity: 10.0,
-    });
+    let controller = CharacterController4D::new(
+        player_key,
+        CharacterConfig {
+            move_speed: 5.0,
+            w_move_speed: 5.0,
+            jump_velocity: 10.0,
+        },
+    );
 
     // Verify initial position
     {
         let physics = active.world.physics().unwrap();
-        let pos = controller.position(physics).expect("Player body should exist");
+        let pos = controller
+            .position(physics)
+            .expect("Player body should exist");
         assert_eq!(pos, spawn_pos, "Initial position should match spawn");
     }
 

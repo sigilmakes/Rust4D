@@ -241,7 +241,6 @@ pub fn scale(s: Vec4) -> Mat4 {
 /// 2. Remove mutual projections between columns
 #[allow(clippy::needless_range_loop)] // index pairs (i, j) into mt are clearest here
 pub fn ortho_iterate(mut m: Mat4) -> Mat4 {
-
     // Normalize columns
     for i in 0..4 {
         let col = get_column(m, i);
@@ -358,27 +357,36 @@ mod tests {
         // Y should go to Z
         let y = Vec4::new(0.0, 1.0, 0.0, 0.0);
         let result = transform(m, y);
-        assert!(vec_approx_eq(result, Vec4::new(0.0, 0.0, 1.0, 0.0)),
-            "Y should become Z, got {:?}", result);
+        assert!(
+            vec_approx_eq(result, Vec4::new(0.0, 0.0, 1.0, 0.0)),
+            "Y should become Z, got {:?}",
+            result
+        );
 
         // Z should go to -Y
         let z = Vec4::new(0.0, 0.0, 1.0, 0.0);
         let result = transform(m, z);
-        assert!(vec_approx_eq(result, Vec4::new(0.0, -1.0, 0.0, 0.0)),
-            "Z should become -Y, got {:?}", result);
+        assert!(
+            vec_approx_eq(result, Vec4::new(0.0, -1.0, 0.0, 0.0)),
+            "Z should become -Y, got {:?}",
+            result
+        );
 
         // X should be unchanged
         let x = Vec4::new(1.0, 0.0, 0.0, 0.0);
         let result = transform(m, x);
-        assert!(vec_approx_eq(result, x),
-            "X should be unchanged, got {:?}", result);
+        assert!(
+            vec_approx_eq(result, x),
+            "X should be unchanged, got {:?}",
+            result
+        );
     }
 
     #[test]
     fn test_skip_y_preserves_y_axis() {
-        use std::f32::consts::FRAC_PI_4;
-        use crate::Rotor4;
         use crate::RotationPlane;
+        use crate::Rotor4;
+        use std::f32::consts::FRAC_PI_4;
 
         // Create a 3D rotation (using YZ plane which affects Y and Z)
         let r = Rotor4::from_plane_angle(RotationPlane::YZ, FRAC_PI_4);
@@ -391,15 +399,18 @@ mod tests {
         let y = Vec4::new(0.0, 1.0, 0.0, 0.0);
         let result = transform(skip_m, y);
 
-        assert!(vec_approx_eq(result, y),
-            "Y axis should be preserved after skip_y, got {:?}", result);
+        assert!(
+            vec_approx_eq(result, y),
+            "Y axis should be preserved after skip_y, got {:?}",
+            result
+        );
     }
 
     #[test]
     fn test_skip_y_remaps_rotation() {
-        use std::f32::consts::FRAC_PI_2;
-        use crate::Rotor4;
         use crate::RotationPlane;
+        use crate::Rotor4;
+        use std::f32::consts::FRAC_PI_2;
 
         // Create a 90° rotation in XY plane (affects X and Y)
         let r = Rotor4::from_plane_angle(RotationPlane::XY, FRAC_PI_2);
@@ -408,29 +419,38 @@ mod tests {
         // Original: X→Y, Y→-X
         let x = Vec4::new(1.0, 0.0, 0.0, 0.0);
         let original_result = transform(m, x);
-        assert!(vec_approx_eq(original_result, Vec4::new(0.0, 1.0, 0.0, 0.0)),
-            "Original: X should become Y, got {:?}", original_result);
+        assert!(
+            vec_approx_eq(original_result, Vec4::new(0.0, 1.0, 0.0, 0.0)),
+            "Original: X should become Y, got {:?}",
+            original_result
+        );
 
         // After SkipY: rotation is now in XZ plane (indices 0,2)
         let skip_m = skip_y(m);
 
         // X should now go to Z (not Y)
         let result = transform(skip_m, x);
-        assert!(vec_approx_eq(result, Vec4::new(0.0, 0.0, 1.0, 0.0)),
-            "After skip_y: X should become Z, got {:?}", result);
+        assert!(
+            vec_approx_eq(result, Vec4::new(0.0, 0.0, 1.0, 0.0)),
+            "After skip_y: X should become Z, got {:?}",
+            result
+        );
 
         // Y should be unchanged
         let y = Vec4::new(0.0, 1.0, 0.0, 0.0);
         let result = transform(skip_m, y);
-        assert!(vec_approx_eq(result, y),
-            "After skip_y: Y should be unchanged, got {:?}", result);
+        assert!(
+            vec_approx_eq(result, y),
+            "After skip_y: Y should be unchanged, got {:?}",
+            result
+        );
     }
 
     #[test]
     fn test_skip_y_xz_becomes_xw() {
-        use std::f32::consts::FRAC_PI_2;
-        use crate::Rotor4;
         use crate::RotationPlane;
+        use crate::Rotor4;
+        use std::f32::consts::FRAC_PI_2;
 
         // Create a 90° rotation in XZ plane
         let r = Rotor4::from_plane_angle(RotationPlane::XZ, FRAC_PI_2);
@@ -443,8 +463,11 @@ mod tests {
         // X should go to W
         let x = Vec4::new(1.0, 0.0, 0.0, 0.0);
         let result = transform(skip_m, x);
-        assert!(vec_approx_eq(result, Vec4::new(0.0, 0.0, 0.0, 1.0)),
-            "After skip_y(XZ rotation): X should become W, got {:?}", result);
+        assert!(
+            vec_approx_eq(result, Vec4::new(0.0, 0.0, 0.0, 1.0)),
+            "After skip_y(XZ rotation): X should become W, got {:?}",
+            result
+        );
     }
 
     #[test]
@@ -471,8 +494,12 @@ mod tests {
         let result1 = transform(composed, v);
         let result2 = transform(r90, v);
 
-        assert!(vec_approx_eq(result1, result2),
-            "Composed: {:?}, Direct: {:?}", result1, result2);
+        assert!(
+            vec_approx_eq(result1, result2),
+            "Composed: {:?}, Direct: {:?}",
+            result1,
+            result2
+        );
     }
 
     #[test]
@@ -480,8 +507,10 @@ mod tests {
         let m = plane_rotation(0.5, 1, 2);
 
         let col0 = get_column(m, 0);
-        assert!(vec_approx_eq(col0, Vec4::new(1.0, 0.0, 0.0, 0.0)),
-            "Column 0 should be X axis for YZ rotation");
+        assert!(
+            vec_approx_eq(col0, Vec4::new(1.0, 0.0, 0.0, 0.0)),
+            "Column 0 should be X axis for YZ rotation"
+        );
     }
 
     #[test]
@@ -548,8 +577,10 @@ mod tests {
         let result = ortho_iterate(m);
 
         // Should still be approximately equal
-        assert!(mat_approx_eq(m, result),
-            "ortho_iterate should preserve orthogonal matrices");
+        assert!(
+            mat_approx_eq(m, result),
+            "ortho_iterate should preserve orthogonal matrices"
+        );
     }
 
     #[test]
@@ -565,7 +596,11 @@ mod tests {
         let col0 = get_column(result, 0);
         let col1 = get_column(result, 1);
         let dot = col0.dot(col1);
-        assert!(dot.abs() < 0.01, "Columns should be orthogonal after ortho_iterate, dot = {}", dot);
+        assert!(
+            dot.abs() < 0.01,
+            "Columns should be orthogonal after ortho_iterate, dot = {}",
+            dot
+        );
 
         // Column lengths should be near 1
         assert!((col0.length() - 1.0).abs() < 0.01);
@@ -580,8 +615,11 @@ mod tests {
 
         // Should rotate X to Y
         let result = transform(m, from);
-        assert!(vec_approx_eq(result, to),
-            "from_to_rotation(X, Y) * X should equal Y, got {:?}", result);
+        assert!(
+            vec_approx_eq(result, to),
+            "from_to_rotation(X, Y) * X should equal Y, got {:?}",
+            result
+        );
     }
 
     #[test]
@@ -593,7 +631,11 @@ mod tests {
         // Result should rotate `from` to `to`
         let result = transform(m, from);
         let dot = result.dot(to);
-        assert!(dot > 0.99, "from_to_rotation should rotate from to to, dot = {}", dot);
+        assert!(
+            dot > 0.99,
+            "from_to_rotation should rotate from to to, dot = {}",
+            dot
+        );
     }
 
     #[test]
@@ -603,7 +645,11 @@ mod tests {
 
         // Should be close to identity (no rotation needed)
         let result = transform(m, v);
-        assert!(vec_approx_eq(result, v), "Identity rotation failed: {:?}", result);
+        assert!(
+            vec_approx_eq(result, v),
+            "Identity rotation failed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -618,8 +664,13 @@ mod tests {
         for (from, to) in &cases {
             let m = from_to_rotation(*from, *to);
             let result = transform(m, *from);
-            assert!(vec_approx_eq(result, *to),
-                "180° rotation failed: from={:?} to={:?}, got {:?}", from, to, result);
+            assert!(
+                vec_approx_eq(result, *to),
+                "180° rotation failed: from={:?} to={:?}, got {:?}",
+                from,
+                to,
+                result
+            );
         }
     }
 
@@ -640,21 +691,37 @@ mod tests {
         let to = -from;
         let m = from_to_rotation(from, to);
         let result = transform(m, from);
-        assert!(vec_approx_eq(result, to),
-            "180° diagonal rotation failed: got {:?}, expected {:?}", result, to);
+        assert!(
+            vec_approx_eq(result, to),
+            "180° diagonal rotation failed: got {:?}, expected {:?}",
+            result,
+            to
+        );
     }
 
     /// Compute determinant of a 4x4 matrix using cofactor expansion
     fn determinant(m: Mat4) -> f32 {
-        let a = m[0][0]; let b = m[1][0]; let c = m[2][0]; let d = m[3][0];
-        let e = m[0][1]; let f = m[1][1]; let g = m[2][1]; let h = m[3][1];
-        let i = m[0][2]; let j = m[1][2]; let k = m[2][2]; let l = m[3][2];
-        let mm = m[0][3]; let n = m[1][3]; let o = m[2][3]; let p = m[3][3];
+        let a = m[0][0];
+        let b = m[1][0];
+        let c = m[2][0];
+        let d = m[3][0];
+        let e = m[0][1];
+        let f = m[1][1];
+        let g = m[2][1];
+        let h = m[3][1];
+        let i = m[0][2];
+        let j = m[1][2];
+        let k = m[2][2];
+        let l = m[3][2];
+        let mm = m[0][3];
+        let n = m[1][3];
+        let o = m[2][3];
+        let p = m[3][3];
 
-        a * (f*(k*p - l*o) - g*(j*p - l*n) + h*(j*o - k*n))
-       -b * (e*(k*p - l*o) - g*(i*p - l*mm) + h*(i*o - k*mm))
-       +c * (e*(j*p - l*n) - f*(i*p - l*mm) + h*(i*n - j*mm))
-       -d * (e*(j*o - k*n) - f*(i*o - k*mm) + g*(i*n - j*mm))
+        a * (f * (k * p - l * o) - g * (j * p - l * n) + h * (j * o - k * n))
+            - b * (e * (k * p - l * o) - g * (i * p - l * mm) + h * (i * o - k * mm))
+            + c * (e * (j * p - l * n) - f * (i * p - l * mm) + h * (i * n - j * mm))
+            - d * (e * (j * o - k * n) - f * (i * o - k * mm) + g * (i * n - j * mm))
     }
 
     #[test]
@@ -662,16 +729,23 @@ mod tests {
         // T1 from review: verify det = +1 (proper rotation, not reflection)
         let cases: Vec<(Vec4, Vec4)> = vec![
             (Vec4::X, Vec4::Y),
-            (Vec4::X, -Vec4::X),   // anti-parallel
+            (Vec4::X, -Vec4::X), // anti-parallel
             (Vec4::Y, -Vec4::Y),
-            (Vec4::new(1.0, 1.0, 1.0, 1.0).normalized(),
-             Vec4::new(-1.0, -1.0, -1.0, -1.0).normalized()),
+            (
+                Vec4::new(1.0, 1.0, 1.0, 1.0).normalized(),
+                Vec4::new(-1.0, -1.0, -1.0, -1.0).normalized(),
+            ),
         ];
         for (from, to) in &cases {
             let m = from_to_rotation(*from, *to);
             let det = determinant(m);
-            assert!((det - 1.0).abs() < 0.01,
-                "from_to_rotation({:?}, {:?}) should have det=1, got {}", from, to, det);
+            assert!(
+                (det - 1.0).abs() < 0.01,
+                "from_to_rotation({:?}, {:?}) should have det=1, got {}",
+                from,
+                to,
+                det
+            );
         }
     }
 
@@ -682,7 +756,9 @@ mod tests {
         set_column(&mut m, 2, Vec4::new(0.0, 0.0, 1e-12, 0.0)); // Near-zero column
         let result = ortho_iterate(m);
         // Should return identity rather than a partially normalized matrix
-        assert!(mat_approx_eq(result, IDENTITY),
-            "Degenerate ortho_iterate should return identity");
+        assert!(
+            mat_approx_eq(result, IDENTITY),
+            "Degenerate ortho_iterate should return identity"
+        );
     }
 }

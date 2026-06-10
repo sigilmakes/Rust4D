@@ -69,7 +69,10 @@ impl EventBus {
                 handler(event);
             }
         });
-        self.handlers.entry(type_id).or_default().push((id, wrapper));
+        self.handlers
+            .entry(type_id)
+            .or_default()
+            .push((id, wrapper));
         HandlerId(type_id, id)
     }
 
@@ -250,7 +253,11 @@ mod tests {
         assert_eq!(bus.queued_count(), 0);
 
         bus.dispatch();
-        assert_eq!(count.load(Ordering::Relaxed), 0, "No events should have been dispatched after clear");
+        assert_eq!(
+            count.load(Ordering::Relaxed),
+            0,
+            "No events should have been dispatched after clear"
+        );
     }
 
     #[test]
@@ -317,7 +324,11 @@ mod tests {
         // Events should not be delivered
         bus.emit(DamageEvent { amount: 10 });
         bus.dispatch();
-        assert_eq!(count.load(Ordering::Relaxed), 0, "Removed handler should not be called");
+        assert_eq!(
+            count.load(Ordering::Relaxed),
+            0,
+            "Removed handler should not be called"
+        );
     }
 
     #[test]
@@ -355,8 +366,16 @@ mod tests {
         bus.emit(DamageEvent { amount: 10 });
         bus.dispatch();
 
-        assert_eq!(count1.load(Ordering::Relaxed), 0, "Removed handler should not fire");
-        assert_eq!(count2.load(Ordering::Relaxed), 1, "Remaining handler should fire");
+        assert_eq!(
+            count1.load(Ordering::Relaxed),
+            0,
+            "Removed handler should not fire"
+        );
+        assert_eq!(
+            count2.load(Ordering::Relaxed),
+            1,
+            "Remaining handler should fire"
+        );
     }
 
     #[test]

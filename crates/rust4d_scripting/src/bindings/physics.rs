@@ -262,34 +262,36 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
     //   When physics is not connected, returns a table with `_stub = true` field.
     physics_table.set(
         "query_sphere",
-        lua.create_function(
-            |lua, (center, radius, layers): (LuaVec4, f32, LuaValue)| {
-                let layer_names = parse_layers(layers)?;
+        lua.create_function(|lua, (center, radius, layers): (LuaVec4, f32, LuaValue)| {
+            let layer_names = parse_layers(layers)?;
 
-                if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
-                    log::warn!(
-                        "[physics] PhysicsWorld not connected - all physics queries will return \
+            if !PHYSICS_WARNED.swap(true, Ordering::Relaxed) {
+                log::warn!(
+                    "[physics] PhysicsWorld not connected - all physics queries will return \
                          empty/stub results."
-                    );
-                }
-
-                log::trace!(
-                    "[physics] query_sphere at ({:.2}, {:.2}, {:.2}, {:.2}) radius={:.2} layers={:?}",
-                    center.0.x, center.0.y, center.0.z, center.0.w,
-                    radius, layer_names
                 );
+            }
 
-                // STUB: Return empty array with _stub marker (MEDIUM-7)
-                // Real implementation would:
-                // 1. Get PhysicsWorld from lua.app_data()
-                // 2. Iterate all bodies and check distance from center
-                // 3. Filter by layer
-                // 4. Return matches with position and distance
-                let results = lua.create_table()?;
-                results.set("_stub", true)?;
-                Ok(results)
-            },
-        )?,
+            log::trace!(
+                "[physics] query_sphere at ({:.2}, {:.2}, {:.2}, {:.2}) radius={:.2} layers={:?}",
+                center.0.x,
+                center.0.y,
+                center.0.z,
+                center.0.w,
+                radius,
+                layer_names
+            );
+
+            // STUB: Return empty array with _stub marker (MEDIUM-7)
+            // Real implementation would:
+            // 1. Get PhysicsWorld from lua.app_data()
+            // 2. Iterate all bodies and check distance from center
+            // 3. Filter by layer
+            // 4. Return matches with position and distance
+            let results = lua.create_table()?;
+            results.set("_stub", true)?;
+            Ok(results)
+        })?,
     )?;
 
     // physics.query_area_effect(center, radius, layers, with_falloff) -> array of results
@@ -389,7 +391,10 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         lua.create_function(|lua, ()| {
             // Try to get PhysicsConfig from app_data
             let gravity_y = if let Some(config) = lua.app_data_ref::<PhysicsConfig>() {
-                log::trace!("[physics] gravity() - returning configured value: {}", config.gravity);
+                log::trace!(
+                    "[physics] gravity() - returning configured value: {}",
+                    config.gravity
+                );
                 config.gravity
             } else {
                 // No config set - use default and warn once

@@ -6,8 +6,8 @@
 //! Existing types like `Transform4D`, `Material`, `ShapeRef`, and `DirtyFlags`
 //! are also used as ECS components directly (they satisfy Send + Sync + 'static).
 
-use std::collections::HashSet;
 use rust4d_physics::BodyKey;
+use std::collections::HashSet;
 
 // === Name Component ===
 

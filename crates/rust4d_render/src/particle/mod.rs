@@ -81,11 +81,11 @@
 //! to 3D like other geometry. Particles close to the current W-slice will be
 //! visible; those far away will be clipped or faded.
 
-mod types;
 mod emitter;
 mod system;
+mod types;
 
 // Re-export public types
-pub use types::{Particle, BlendMode, BurstConfig, EmitterConfig};
 pub use emitter::ParticleEmitter;
 pub use system::ParticleSystem;
+pub use types::{BlendMode, BurstConfig, EmitterConfig, Particle};

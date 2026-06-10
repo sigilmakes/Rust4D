@@ -4,7 +4,7 @@
 //! by code outside the rust4d_math crate, which is the typical use case for the
 //! tween system in rust4d_game.
 
-use rust4d_math::{Interpolatable, Rotor4, RotationPlane, Vec4};
+use rust4d_math::{Interpolatable, RotationPlane, Rotor4, Vec4};
 use std::f32::consts::PI;
 
 const EPSILON: f32 = 0.001;

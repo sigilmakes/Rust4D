@@ -1,7 +1,7 @@
 //! Game loop lifecycle callback dispatch
 
-use mlua::prelude::*;
 use crate::error::ScriptError;
+use mlua::prelude::*;
 
 /// Check if a callback function exists without calling it
 pub fn has_callback(lua: &Lua, callback_name: &str) -> bool {
@@ -21,10 +21,11 @@ pub fn call_lifecycle(lua: &Lua, name: &str, args: impl IntoLuaMulti) -> Result<
 
     match globals.get::<LuaValue>(name) {
         Ok(LuaValue::Function(func)) => {
-            func.call::<()>(args).map_err(|e| ScriptError::RuntimeError {
-                callback: name.to_string(),
-                error: e,
-            })?;
+            func.call::<()>(args)
+                .map_err(|e| ScriptError::RuntimeError {
+                    callback: name.to_string(),
+                    error: e,
+                })?;
             Ok(())
         }
         Ok(LuaValue::Nil) => {

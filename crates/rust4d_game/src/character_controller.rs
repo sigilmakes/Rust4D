@@ -91,7 +91,7 @@ impl CharacterController4D {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust4d_physics::{PhysicsConfig, RigidBody4D, BodyType, PhysicsMaterial, StaticCollider};
+    use rust4d_physics::{BodyType, PhysicsConfig, PhysicsMaterial, RigidBody4D, StaticCollider};
 
     /// Create a test physics world with a floor at y=0
     fn test_world_with_floor() -> PhysicsWorld {
@@ -185,8 +185,16 @@ mod tests {
 
         physics.step(1.0);
         let pos = physics.body_position(body_key).unwrap();
-        assert!((pos.x - 2.0).abs() < 0.01, "Expected x=2.0 (move_speed), got {}", pos.x);
-        assert!((pos.w - 5.0).abs() < 0.01, "Expected w=5.0 (w_move_speed), got {}", pos.w);
+        assert!(
+            (pos.x - 2.0).abs() < 0.01,
+            "Expected x=2.0 (move_speed), got {}",
+            pos.x
+        );
+        assert!(
+            (pos.w - 5.0).abs() < 0.01,
+            "Expected w=5.0 (w_move_speed), got {}",
+            pos.w
+        );
     }
 
     #[test]
@@ -196,9 +204,8 @@ mod tests {
         // orthogonal after speed scaling, for ANY speed configuration.
         // World-axis anisotropic scaling violated this.
         let mut physics = PhysicsWorld::with_config(PhysicsConfig::new(0.0));
-        let body_key = physics.add_body(
-            RigidBody4D::new_sphere(Vec4::ZERO, 0.5).with_body_type(BodyType::Kinematic),
-        );
+        let body_key = physics
+            .add_body(RigidBody4D::new_sphere(Vec4::ZERO, 0.5).with_body_type(BodyType::Kinematic));
         let config = CharacterConfig {
             move_speed: 3.0,
             w_move_speed: 2.0, // anisotropic, like config/default.toml
@@ -235,12 +242,18 @@ mod tests {
 
         // Step to get grounded
         physics.step(0.016);
-        assert!(controller.is_grounded(&physics), "Should be grounded after step near floor");
+        assert!(
+            controller.is_grounded(&physics),
+            "Should be grounded after step near floor"
+        );
 
         // Jump should succeed
         let jumped = controller.jump(&mut physics);
         assert!(jumped, "Jump should succeed when grounded");
-        assert!(!controller.is_grounded(&physics), "Should not be grounded after jump");
+        assert!(
+            !controller.is_grounded(&physics),
+            "Should not be grounded after jump"
+        );
     }
 
     #[test]
@@ -251,7 +264,10 @@ mod tests {
 
         let controller = CharacterController4D::new(body_key, CharacterConfig::default());
 
-        assert!(!controller.is_grounded(&physics), "Should not be grounded in air");
+        assert!(
+            !controller.is_grounded(&physics),
+            "Should not be grounded in air"
+        );
 
         let jumped = controller.jump(&mut physics);
         assert!(!jumped, "Jump should fail when airborne");
@@ -351,7 +367,11 @@ mod tests {
 
         let controller = CharacterController4D::new(
             body_key,
-            CharacterConfig { move_speed: 5.0, w_move_speed: 5.0, jump_velocity: 8.0 },
+            CharacterConfig {
+                move_speed: 5.0,
+                w_move_speed: 5.0,
+                jump_velocity: 8.0,
+            },
         );
 
         // First apply some movement

@@ -3,17 +3,17 @@
 //! Provides Scene struct for loading/saving scenes from RON files.
 //! Scenes contain entity templates, physics settings, and player spawn info.
 
-use serde::{Serialize, Deserialize};
-use std::path::Path;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
+use std::path::Path;
 
+use crate::components::PhysicsBody;
 use crate::entity::EntityTemplate;
 use crate::shapes::ShapeTemplate;
-use crate::components::PhysicsBody;
 use crate::World;
 use rust4d_math::Vec4;
-use rust4d_physics::{PhysicsConfig, RigidBody4D, StaticCollider, BodyType, PhysicsMaterial};
+use rust4d_physics::{BodyType, PhysicsConfig, PhysicsMaterial, RigidBody4D, StaticCollider};
 
 /// A serializable scene containing entity templates
 ///
@@ -48,8 +48,12 @@ impl Scene {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, SceneLoadError> {
         let contents = fs::read_to_string(path.as_ref())?;
         let scene: Scene = ron::from_str(&contents)?;
-        log::debug!("Loaded scene '{}' with gravity={:?}, player_spawn={:?}",
-            scene.name, scene.gravity, scene.player_spawn);
+        log::debug!(
+            "Loaded scene '{}' with gravity={:?}, player_spawn={:?}",
+            scene.name,
+            scene.gravity,
+            scene.player_spawn
+        );
         Ok(scene)
     }
 
@@ -229,11 +233,18 @@ impl ActiveScene {
     /// Player body creation is NOT handled here -- use
     /// `rust4d_game::scene_helpers::create_player_body()` at the application layer.
     pub fn from_template(template: &Scene, physics_config: Option<PhysicsConfig>) -> Self {
-        log::debug!("from_template: physics_config={:?}, template.gravity={:?}", physics_config, template.gravity);
+        log::debug!(
+            "from_template: physics_config={:?}, template.gravity={:?}",
+            physics_config,
+            template.gravity
+        );
 
         // Create world with physics
         let mut world = if let Some(config) = physics_config {
-            log::debug!("Using provided physics_config with gravity={}", config.gravity);
+            log::debug!(
+                "Using provided physics_config with gravity={}",
+                config.gravity
+            );
             World::new().with_physics(config)
         } else if let Some(gravity) = template.gravity {
             log::debug!("Using template gravity={}", gravity);
@@ -254,7 +265,14 @@ impl ActiveScene {
             if let Some(physics) = world.physics_mut() {
                 if is_static {
                     // Create bounded static collider for floor/walls (objects can fall off edges)
-                    if let ShapeTemplate::Hyperplane { y, size, cell_size, thickness, .. } = &entity_template.shape {
+                    if let ShapeTemplate::Hyperplane {
+                        y,
+                        size,
+                        cell_size,
+                        thickness,
+                        ..
+                    } = &entity_template.shape
+                    {
                         log::debug!("Adding bounded floor collider: y={}, size={}, cell_size={}, thickness={}",
                             y, size, cell_size, thickness);
                         physics.add_static_collider(StaticCollider::floor_bounded(
@@ -274,16 +292,17 @@ impl ActiveScene {
                         entity_template.transform.position.w,
                     );
 
-                    // Get half-extent from shape
-                    let half_extent = match &entity_template.shape {
-                        ShapeTemplate::Tesseract { size } => size / 2.0,
-                        ShapeTemplate::Hyperplane { .. } => 1.0, // shouldn't be dynamic, but fallback
-                    };
-
-                    let body = RigidBody4D::new_aabb(
-                        position,
-                        Vec4::new(half_extent, half_extent, half_extent, half_extent),
-                    )
+                    // Choose a collider from the shape's hint: spheres for
+                    // round shapes, conservative AABBs for everything else.
+                    let body = match entity_template.shape.collider_hint() {
+                        crate::shapes::ColliderHint::Sphere { radius } => {
+                            RigidBody4D::new_sphere(position, radius)
+                        }
+                        crate::shapes::ColliderHint::Aabb { half_extent } => RigidBody4D::new_aabb(
+                            position,
+                            Vec4::new(half_extent, half_extent, half_extent, half_extent),
+                        ),
+                    }
                     .with_body_type(BodyType::Dynamic)
                     .with_mass(10.0)
                     .with_material(PhysicsMaterial::WOOD);
@@ -294,7 +313,9 @@ impl ActiveScene {
 
             let entity_handle = entity_template.spawn_in(&mut world);
             if let Some(bk) = body_key {
-                let _ = world.ecs_mut_unchecked().insert_one(entity_handle, PhysicsBody(bk));
+                let _ = world
+                    .ecs_mut_unchecked()
+                    .insert_one(entity_handle, PhysicsBody(bk));
             }
         }
 
@@ -341,8 +362,8 @@ impl ActiveScene {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Transform4D, Material};
     use crate::shapes::ShapeTemplate;
+    use crate::{Material, Transform4D};
     use rust4d_math::Vec4;
 
     #[test]
@@ -388,7 +409,9 @@ mod tests {
             ShapeTemplate::tesseract(2.0),
             Transform4D::from_position(Vec4::new(1.0, 0.0, 0.0, 0.0)),
             Material::RED,
-        ).with_name("test_cube").with_tag("dynamic");
+        )
+        .with_name("test_cube")
+        .with_tag("dynamic");
 
         scene.add_entity(entity);
 
@@ -463,7 +486,13 @@ Scene(
         assert_eq!(scene.entities[0].name, Some("floor".to_string()));
         assert_eq!(scene.entities[0].tags, vec!["static"]);
         match &scene.entities[0].shape {
-            ShapeTemplate::Hyperplane { y, size, subdivisions, cell_size, thickness } => {
+            ShapeTemplate::Hyperplane {
+                y,
+                size,
+                subdivisions,
+                cell_size,
+                thickness,
+            } => {
                 assert_eq!(*y, -2.0);
                 assert_eq!(*size, 10.0);
                 assert_eq!(*subdivisions, 10);
@@ -490,7 +519,9 @@ Scene(
             ShapeTemplate::tesseract(2.0),
             Transform4D::from_position(Vec4::new(1.0, 2.0, 3.0, 4.0)),
             Material::RED,
-        ).with_name("my_cube").with_tag("dynamic");
+        )
+        .with_name("my_cube")
+        .with_tag("dynamic");
 
         let mut world = crate::World::new();
         let entity = template.spawn_in(&mut world);
@@ -555,16 +586,14 @@ Scene(
 
     #[test]
     fn test_active_scene_with_physics() {
-        let scene = ActiveScene::new("Physics Scene")
-            .with_physics(PhysicsConfig::new(-20.0));
+        let scene = ActiveScene::new("Physics Scene").with_physics(PhysicsConfig::new(-20.0));
         assert!(scene.world.physics().is_some());
         assert_eq!(scene.world.physics().unwrap().config.gravity, -20.0);
     }
 
     #[test]
     fn test_active_scene_with_player_spawn() {
-        let scene = ActiveScene::new("Spawn Scene")
-            .with_player_spawn([1.0, 2.0, 3.0, 4.0]);
+        let scene = ActiveScene::new("Spawn Scene").with_player_spawn([1.0, 2.0, 3.0, 4.0]);
         assert_eq!(scene.player_spawn, Some([1.0, 2.0, 3.0, 4.0]));
     }
 
@@ -575,11 +604,14 @@ Scene(
             .with_gravity(-15.0)
             .with_player_spawn(0.0, 1.0, 5.0, 0.0);
 
-        template.add_entity(EntityTemplate::new(
-            ShapeTemplate::tesseract(2.0),
-            Transform4D::from_position(Vec4::new(1.0, 0.0, 0.0, 0.0)),
-            Material::RED,
-        ).with_name("cube"));
+        template.add_entity(
+            EntityTemplate::new(
+                ShapeTemplate::tesseract(2.0),
+                Transform4D::from_position(Vec4::new(1.0, 0.0, 0.0, 0.0)),
+                Material::RED,
+            )
+            .with_name("cube"),
+        );
 
         // Instantiate from template
         let active = ActiveScene::from_template(&template, None);
@@ -603,10 +635,7 @@ Scene(
         let template = Scene::new("Template").with_gravity(-10.0);
 
         // Override physics config
-        let active = ActiveScene::from_template(
-            &template,
-            Some(PhysicsConfig::new(-30.0)),
-        );
+        let active = ActiveScene::from_template(&template, Some(PhysicsConfig::new(-30.0)));
 
         // Should use overridden config, not template gravity
         assert_eq!(active.world.physics().unwrap().config.gravity, -30.0);
@@ -614,8 +643,7 @@ Scene(
 
     #[test]
     fn test_active_scene_update() {
-        let mut scene = ActiveScene::new("Update Test")
-            .with_physics(PhysicsConfig::new(-20.0));
+        let mut scene = ActiveScene::new("Update Test").with_physics(PhysicsConfig::new(-20.0));
 
         // Just verify update doesn't panic
         scene.update(0.016);

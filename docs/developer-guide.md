@@ -323,8 +323,13 @@ The trait requires:
 - `tetrahedra()`: Decomposition into 3-simplices for slicing
 
 Current implementations:
-- `Tesseract4D`: 16 vertices, decomposed into tetrahedra via Kuhn triangulation
+- `Tesseract4D`: 16 vertices, 48 boundary tetrahedra (8 cubic facets × 6)
 - `Hyperplane4D`: Bounded 4D floor plane
+- `Mesh4D` primitives (`rust4d_math::primitives`): hypersphere, 5-cell,
+  16-cell, 24-cell, 600-cell, spherinder, cubinder, duocylinder
+
+See the [Shape Catalog](./shapes.md) for construction details, scene syntax,
+cell counts, and the visual verification workflow.
 
 ### rust4d_core
 

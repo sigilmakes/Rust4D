@@ -70,7 +70,10 @@ impl HeadlessGpu {
         .expect("no GPU adapter available");
 
         let info = adapter.get_info();
-        println!("[GPU] adapter: {} ({:?}, {:?})", info.name, info.device_type, info.backend);
+        println!(
+            "[GPU] adapter: {} ({:?}, {:?})",
+            info.name, info.device_type, info.backend
+        );
 
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
@@ -140,12 +143,7 @@ impl HeadlessGpu {
     }
 
     /// Render one frame exactly like `RenderSystem::render_frame` and save it.
-    fn capture(
-        &mut self,
-        camera: &Camera4D,
-        tetrahedron_count: u32,
-        path: &Path,
-    ) -> u32 {
+    fn capture(&mut self, camera: &Camera4D, tetrahedron_count: u32, path: &Path) -> u32 {
         let pos = camera.position;
         let camera_matrix = camera.rotation_matrix();
         let slice_params = SliceParams {
@@ -155,7 +153,8 @@ impl HeadlessGpu {
             camera_matrix,
             camera_position: [pos.x, pos.y, pos.z, pos.w],
         };
-        self.slice_pipeline.update_params(&self.queue, &slice_params);
+        self.slice_pipeline
+            .update_params(&self.queue, &slice_params);
 
         let proj = perspective_matrix(
             45.0_f32.to_radians(),
@@ -180,6 +179,7 @@ impl HeadlessGpu {
                 diffuse_strength: 0.7,
                 w_color_strength: 0.3,
                 w_range: 2.0,
+                ..RenderUniforms::default()
             },
         );
 
